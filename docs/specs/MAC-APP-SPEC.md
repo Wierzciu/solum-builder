@@ -122,7 +122,7 @@ Application Support, not Documents: no permission prompt on first launch, and iC
 ## 9. Process around it (GitHub)
 
 - `main` takes changes by pull request only; the maintainer reviews DECISIONS entries, what can be seen or heard, and scope.
-- **Not built yet:** a CI workflow running `make check` on every pull request and on `main` (on x86-64 and on an arm64 runner, so ARM doesn't break unseen, D-327), required by the `main` ruleset, and a "How changes get in" section in `docs/maintain/README.md`. Planned separately.
+- No check runs on pull requests: the maintainer and the agent run the suites locally before each one. The release run builds the Docker image on x86-64 and ARM64 and smoke-tests it beside the Mac build, and the draft release waits for both (D-346).
 
 ## 10. Questions settled
 
