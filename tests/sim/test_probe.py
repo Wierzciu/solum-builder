@@ -194,7 +194,11 @@ def test_resistor_view(sim: Simulator, circuit: Builder) -> None:
         .build()
     )
     view = part_view(sim, c, "R1", "med")
-    assert view["pins"] == {"1": {"net": "V+", "dc": 9.0}, "2": {"net": "m", "dc": 4.5}}
+    assert view["pins"] == {
+        "1": {"net": "V+", "dc": 9.0, "number": None},
+        "2": {"net": "m", "dc": 4.5, "number": None},
+    }
+    assert view["package"] is None
     d = view["detail"]
     assert d["across"] == pytest.approx(4.5)
     assert d["current"] == pytest.approx(4.5e-4)
@@ -358,7 +362,12 @@ def test_mosfet_view_operating_point_on_its_curve(sim: Simulator, circuit: Build
 
 def test_opamp_view(sim: Simulator) -> None:
     c = load_circuit(REPO / "library" / "starters" / "ts808.json")
-    d = part_view(sim, c, "IC1B", "med")["detail"]
+    view = part_view(sim, c, "IC1B", "med")
+    # the second half's pins, numbered as on the chip (RC4558, 8-pin DIP; D-336)
+    numbers = {pin: info["number"] for pin, info in view["pins"].items()}
+    assert {"+": 5, "-": 6, "out": 7}.items() <= numbers.items()
+    assert view["package"] == "8-pin DIP"
+    d = view["detail"]
     assert d["rails"] == [0.0, 9.0]
     assert d["out"] == pytest.approx(4.5, abs=0.1)
     assert d["inputs"]["+"] == pytest.approx(d["inputs"]["-"], abs=0.01)
@@ -470,7 +479,7 @@ def test_a_part_left_out_of_the_simulation_says_so(sim: Simulator, circuit: Buil
     wired, loose = part_view(sim, c, "R1", "med"), part_view(sim, c, "R2", "med")
     assert wired["loose"] is False and wired["detail"]["across"] == pytest.approx(9.0)
     assert loose["loose"] is True and loose["detail"] == {}
-    assert loose["pins"]["1"] == {"net": "V+", "dc": pytest.approx(9.0)}
+    assert loose["pins"]["1"] == {"net": "V+", "dc": pytest.approx(9.0), "number": None}
     assert loose["pins"]["2"]["dc"] is None
 
 

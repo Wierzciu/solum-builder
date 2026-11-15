@@ -426,7 +426,7 @@ Ctrl+click (Cmd+click on a Mac) or Shift+click puts one part, wire, label or tex
 - **Tools menu**: Unit converter (with capacitor codes both ways: `223` ↔ 22 nF) and Resistor colour code (4 or 5 bands both ways, whether the value is standard, the E24 and E96 values either side). All reading and formatting is the server's (`solum/markings.py` over `solum/units.py`): the pages lay out `/api/tools/*` answers. E96 is in `E_SERIES`. Band colours are theme tokens (`--band-*`).
 - **Right-click menu** on the canvas: the clicked thing is selected first (a selection stays); its own items (Edit, Rotate, Delete, Copy), Paste (follows the pointer until a click drops it, as Ctrl+V), and the header's menus as submenus built from the same item lists (`MENUS`). Nothing while placing or drawing a wire.
 
-- **Drag a wire**: a selected wire drags (via `moveItems` → `relay`) with its ends re-laid to what they joined; pressing on an unselected wire still starts a new wire. A drag of wires alone must keep every connection (`sameConnections` on the server's new view); otherwise nothing changes and the hint says so (refined in D-293).
+- **Drag a wire**: a selected wire drags (via `moveItems` → `relay`) with its ends re-laid to what they joined; pressing on an unselected wire still starts a new wire (superseded by D-340: an unselected wire drags too). A drag of wires alone must keep every connection (`sameConnections` on the server's new view); otherwise nothing changes and the hint says so (refined in D-293).
 - **A moved or pasted selection stays whole**: after a move or paste, wires and labels are found again by where they went (`itemsAfterMove`, `itemsAt`) and stay selected.
 - **Any other click lets go of the selection**: drawing a wire, dragging a wire end or something outside the selection drops it; only dragging the selection keeps it.
 - **Resistor chart in Help** (reference in Help, calculators in Tools): Help → Resistor colour code and values, one row per colour with all twelve multipliers and the IEC 60062 tolerance letters, worked examples, and the R/k/M notation. Data from the server (`tables()`).
@@ -567,7 +567,7 @@ The Audio pane's shrunk bar is always the bottom one (`pinBar`); its controls si
 *Alternatives:* turning a part to lie along the wire (a guess; Space turns the ghost); ending a wire with Enter.
 
 **D-113 — A press on anything in a selection moves the selection** (2026-10-26) `editor`
-- With several items selected, a drag starting on any of them (a part or its pin, a wire or its end ball, a label, a text block) moves them all (`grabsSelection` in `render.js`). Outside a selection, a pin, label or wire starts a wire and a ball moves its end.
+- With several items selected, a drag starting on any of them (a part or its pin, a wire or its end ball, a label, a text block) moves them all (`grabsSelection` in `render.js`). Outside a selection, a pin, label or wire starts a wire (a wire's body drags since D-340) and a ball moves its end.
 - **Any part placed, moved or turned onto a wire goes in series**: `inSeries` in `edit.js`, after `addPart`, `moveItems` and `rotatePart`, cuts a wire running through two of a part's pins (one of them part-way along it). A jumper drawn pin to pin stays, as does a wire touching one pin.
 
 **D-114 — A net label's text keeps off the wires; a part's probe uses one circuit** (2026-10-26) `editor`
@@ -1878,3 +1878,52 @@ Calculators → *Filter* (`filterCalculator` in `web/tools.js`, `GET /api/tools/
 - Help → Documentation's iframe (`manualSheet`, `web/help.js`) carries no `loaded` class until its first `load` event, and `.manual-frame:not(.loaded)` is `visibility: hidden`; the sheet's body has the theme's `--surface-0` behind it. Later pages change without a reload (D-300), so it is shown once per opening.
 - **Why:** the user saw the window flash light, then go back to the theme, on each opening. The guide's page is themed as it arrives (D-311), but until it has drawn, the frame holds an empty page, which browsers paint opaque white over a dark page (their `color-scheme` differs).
 *Alternatives:* `color-scheme` on the iframe element (WebKit and Chromium treat the blank page differently; not reliable in the Mac app's window); fetching the guide and writing it into the frame (the frame's own navigation and links, D-300, would need redoing).
+
+**D-334 — The circuit file as an output of its own** (2026-11-14) `build`
+- File → Export lists **Circuit file (JSON)**: `GET /api/export/{starter|circuit}/{id}/circuit.json`, the last save written by `circuit_to_json` (the same form the store keeps and the build package's `circuit.json`), downloaded as `<name>.json`.
+- **Why:** the user asked to export the circuit's JSON; it was only inside the build package zip.
+*Alternatives:* leave it in the package only (a zip to unpack for one file); a menu item outside Export (Export is where every file the app makes is found).
+
+**D-335 — A refused edit says why over the canvas; label clashes worded by what they short** (2026-11-14) `editor` `look`
+- **The refusal bar**: an edit `/api/view` refuses is undone (as before) and its message shows over the foot of the canvas (`web/refusal.js`, `#refusal`), not in the Results column: a pulse when it appears (a fade with reduced motion), gone after 7 s (`REFUSAL_MS`, paused while hovered) or on ×, replaced by the next one. Messages about the circuit as it stands (a failed run, one that won't simulate, one that won't open) stay in the Results column's `#error`, which is now sticky at the column's top so scrolling the panes doesn't hide it.
+- **Label clashes** (`clash_text`, one sentence, the Problems panel's `labels-joined` message too, titled *Labels wired together*; `clash_message` adds `CLASH_FIX`): a supply rail (V+, V-) joined to GND is "a dead short across the supply"; V+ to V- "a short between the supplies"; a rail to another named net "whatever is between them is bypassed"; other names "a net can have only one name".
+- **Where a clash is**: `ConnectivityError.at`, the labels on a piece of wiring that carries more than one name (worked out before labels join by name, so not every GND on the sheet). The view returns them as `clash`; the problem as `at` (`Problem.at`, `Hit.at`), which puts its mark on the sheet (`markSpot`'s `spot`). Clicking the Problems row or the Results column's error selects those labels (`labelsAt`); the error shows it can be clicked (pointer, *Show where on the sheet*).
+- **The battery's rails** (`battery_rails`) are none while the wiring contradicts itself, so a circuit with a battery draws a clashing wire and reports it like any other (the view's own catch, `_unconnected_view`), where before the view failed and the wire was refused.
+- **Why:** the user wired a battery's + to ground: the wire vanished with its reason only at the top of the Results column, worded about net names, not the short.
+*Alternatives:* the message in the canvas's hint line (one line, cut short; it's where tool hints go); a fixed bar for every error, timing out (a failed run's reason would go while the panes stay empty); naming the parts a rail-to-net join bypasses (needs a path search; left until asked).
+
+**D-336 — The probe pane numbers a chip's pins as counted on the chip** (2026-11-14) `panes`
+- `part_view` gives each pin its datasheet `number` (`view.pin_number`, the schematic's lookup, D-140) and the part its `package` ("8-pin DIP"), for chip units, power units and regulators whose model record has a package. The pane's Pin column (`pinList`) lists such a part's pins in number order as "3 (+)", headed "Pin, 8-pin DIP"; a dual's half lists its own pins (IC1B: 5, 6, 7). Other parts stay "pin 1", in drawn order.
+- **Why:** the user: "pin +" doesn't say which leg it is on the chip in your hand.
+*Alternatives:* the number alone (loses what the pin does); transistors' leg order (TO-92 EBC) as well (their records' package names a leg order, not numbers; left until asked).
+
+**D-337 — The probe's pin list follows the drawing before the next run** (2026-11-15) `panes`
+- After an edit, the probed part's pin table is rebuilt from the new circuit view (`showDrawnPins` in `app.js`, `refreshPins` and `drawnPins` in `panels.js`): pins added or taken away (an op-amp's *Draw: all its pins*, a switch's type, a stereo jack, an LM308's compensation pins) and each pin's net, at once. A pin keeps its last DC only while it is on the net it was measured on; otherwise "—" until the next run. Readings above the table wait for the run, as before; not while values are being tried (their own columns).
+- **Why:** the user turned on all the op-amp's pins and the probe didn't show them until Run: which pins a part has and where they connect is the drawing, which the sheet already shows.
+*Alternatives:* re-running the part view after every edit with Auto-run off (a simulation the user turned off); leaving it to Run (the pane contradicts the sheet).
+
+**D-338 — A dropped supply turns clear of its wire** (2026-11-15) `editor`
+- A V+, V- or ground symbol dropped unturned (`ghost.rot` 0) gets `clearSupplyRot(circuit, pos, kind)`: as drawn (a rail's bar up, ground down) if that way is clear, else pointing the opposite way, else right, else left; "clear" is no wire leaving the point that way and no pin's lead (`takenDirections`). A ghost turned with Space before dropping keeps its turn; supplies already on the sheet aren't turned.
+- **Why:** the user dropped V+ at the foot of a wire coming down and in the middle of a wire: the bar and name sat on the wire. Supplies are drop-and-go; parts get turned before placing.
+*Alternatives:* turning supplies whenever their wiring changes (moves the user's own choice); plain net labels (they already find their own side).
+
+**D-339 — A move's preview carries the labels on the moved parts' pins** (2026-11-15) `editor`
+- The drag preview (`preview` in `app.js`) returns, with the re-laid wires, the labels `moveItems` moves because they sit on a moved part's pin; the sheet moves them with the part while dragging (`press.carried` in `render.js`), as the drop does.
+- **Why:** dragging R5 with a ground on its pin, the ground looked left behind until the drop, then jumped along.
+*Alternatives:* a wire put in between on such a move (changes the drawing the user made); leaving the label behind on drop (breaks the connection).
+
+**D-340 — Any wire drags; new wires come from the Wire tool, a pin or a label's point** (2026-11-15) `editor`
+- A press-and-drag on a wire's body moves it whether or not it's selected (`gestureAt`): the stretch grabbed alone, as D-293, or the selection when the wire is in it. A press on a pin's end, a label's or supply's point still starts a wire without the Wire tool (D-164); with the Wire tool, clicks draw as before (D-062).
+- **Why:** the user pressed on a wire to move it and got a new wire; selecting it first was a step nobody expects.
+*Alternatives:* keeping D-095's draw-from-a-wire drag (T-joins are made with the Wire tool or by ending a wire on another); requiring the Wire tool for pins too (dragging a wire out of a pin is quick and kept).
+
+**D-341 — With nothing selected, the Probe pane rests on the amp** (2026-11-15) `panes` `editor`
+- What's probed when nothing is selected (`outputSelection` in `app.js`: on opening, a click on empty sheet, a selection let go) is the amp on the output, as a *resting* part selection (`Selection.resting`): the Probe pane shows its part view (its `in` pin's net and DC); the other panes show the output as before (`currentNet`). A resting selection isn't lit on the sheet and isn't acted on: Space, Delete, Enter, Copy and Ctrl+click see no selection (`chosen()`; the sheet's `inSelection`). With no amp on the output net (a block, a set `probes.out`), the output's net as before.
+- **Why:** the user: with nothing selected, the output net's view (gain, peaks, clipping, impedance) was too much and its wire lit up as if picked; the amp's one pin and DC is what an unselected sheet should say.
+*Alternatives:* a real selection of the amp (it would light up and turn with Space); an empty Probe pane (nothing to read until a click).
+
+**D-342 — Two flaky UI tests: the container's network settling, and sliders loading after their form closed** (2026-11-15) `project` `editor`
+- **The UI tests wait for the network to settle** (`settle_network` in `tests/ui/conftest.py`, before the session's browser starts): until no IPv6 address in `/proc/net/if_inet6` is tentative, at most 5 s (about 1-2 s in a fresh container; nothing to wait for off Linux). A container's link-local address finishes its duplicate check a moment after start; Chromium takes that for a network change and fails every request in flight (`net::ERR_NETWORK_CHANGED`), so the first page a test worker loaded failed about one time in four, whichever test it was (seen in `test_the_palette_is_whole_before_a_circuit_loads`). That test also waits for the circuit's request before checking it was held: the palette can be drawn before the request goes out.
+- **A form's sliders don't load once it has closed** (`load` in `web/live-sliders.js`, both kinds): the inspector's sliders load after the part's view arrives; a rename applied before that sent `/api/live` the old ref with the new circuit (a 422, "There's no part R54", seen in `test_renaming_back_lists_the_notes_that_already_use_the_name`).
+- **Why:** both failed `make accept` now and then, on unchanged code.
+*Alternatives:* retrying failed tests (hides real failures); IPv6 turned off in the dev container (`--sysctl`; changes the environment the app is tested in); ignoring the 422 in the test (it's a real stray request).

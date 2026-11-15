@@ -273,7 +273,7 @@ def _model_pins(part: Part, models: ModelLibrary | None) -> set[str]:
     return set(models.get(model).info.pins)
 
 
-def _pin_number(part: Part, pin: str, models: ModelLibrary | None) -> int | None:
+def pin_number(part: Part, pin: str, models: ModelLibrary | None) -> int | None:
     """A chip unit's pin's datasheet number (D-140, D-180), a power unit's (D-179) or a
     regulator's (D-227), when its model's record has them."""
     chips = (*CHIP_UNITS, PowerUnit, Regulator)
@@ -366,11 +366,12 @@ def text_entries(circuit: Circuit) -> list[dict[str, Any]]:
 def _unconnected_view(
     circuit: Circuit,
     models: ModelLibrary | None,
-    problem: str,
+    err: ConnectivityError,
     pickups: Mapping[str, str] | None,
 ) -> dict[str, Any]:
     """Geometry only, for wiring that contradicts itself mid-edit (two labels joined):
-    the editor can still draw it and undo, and `problem` says what's wrong."""
+    the editor can still draw it and undo, `problem` says what's wrong and `clash` where
+    (the labels wired together, D-335)."""
     parts = [
         _part_entry(
             p,
@@ -395,7 +396,8 @@ def _unconnected_view(
         "controls": controls(circuit),
         "power": power_chip(circuit),
         "battery_wiring": None,
-        "problem": problem,
+        "problem": str(err),
+        "clash": [list(p) for p in err.at],
     }
 
 
@@ -411,7 +413,7 @@ def circuit_view(
     try:
         nets = connect(circuit)
     except ConnectivityError as err:
-        return _unconnected_view(circuit, models, str(err), pickups)
+        return _unconnected_view(circuit, models, err, pickups)
     rails = rail_nets(circuit, nets)
     from solum.rules.graph import ac_grounds  # graph builds on this module's rail_nets
 
@@ -420,7 +422,7 @@ def circuit_view(
     parts = [
         _part_entry(
             p,
-            [{"name": name, "pos": list(pos), "net": net, "number": _pin_number(p, name, models)}
+            [{"name": name, "pos": list(pos), "net": net, "number": pin_number(p, name, models)}
              for name, (pos, net) in drawn_pins(circuit, nets, p, models).items()],
             models, pickups,
         )

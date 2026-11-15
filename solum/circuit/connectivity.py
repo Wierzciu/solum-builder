@@ -13,6 +13,7 @@ from functools import lru_cache
 from solum.circuit.parts import pin_positions
 from solum.circuit.schema import (
     CHIP_UNITS,
+    SUPPLY_SIGNS,
     AmpInput,
     Bjt,
     Capacitor,
@@ -44,11 +45,15 @@ PinRef = tuple[str, str]  # (ref, pin)
 
 class ConnectivityError(ValueError):
     """The wiring is contradictory (plain-English message). `names`: the net labels
-    wired together, when that's the problem."""
+    wired together, when that's the problem; `at`: where those labels sit, the ones wired
+    to each other (not every label of the same name elsewhere, D-335)."""
 
-    def __init__(self, message: str, names: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self, message: str, names: tuple[str, ...] = (), at: tuple[Point, ...] = ()
+    ) -> None:
         super().__init__(message)
         self.names = names
+        self.at = at
 
 
 @dataclass(frozen=True, eq=False)
@@ -128,6 +133,41 @@ def connect(circuit: Circuit) -> Nets:
     return _nets(pins, wires, labels, active)
 
 
+CLASH_FIX = "Remove the wire, or one of the labels if they're meant to be one net."
+
+
+def clash_text(names: set[str]) -> str:
+    """What wiring these labels together does, in a sentence (D-335): a supply shorted to
+    ground or to another supply, a supply joined to a net made from it (whatever lies
+    between bypassed), else two names for one net. The Problems panel's message too."""
+    rails = sorted(n for n in names if n in SUPPLY_SIGNS)
+    rest = sorted(names - {GROUND, *rails})
+    if rails and GROUND in names:
+        return f"That joins {' and '.join(rails)} to {GROUND}: a dead short across the supply."
+    if len(rails) > 1:
+        return f"That joins {' and '.join(rails)}: a short between the supplies."
+    if rails:
+        return (f"That joins {rails[0]} to {' and '.join(rest)}, so whatever is between them "
+                "is bypassed (a filter resistor, a regulator).")  # fmt: skip
+    return f"That joins {' and '.join(sorted(names))}, and a net can have only one name."
+
+
+def clash_message(names: set[str]) -> str:
+    """Why labels wired together are refused: `clash_text` and what to do."""
+    return f"{clash_text(names)} {CLASH_FIX}"
+
+
+def _clash_spots(
+    labels: tuple[tuple[str, Point], ...], wired: dict[Point, Point]
+) -> tuple[Point, ...]:
+    """Where a clash is: the labels on a piece of wiring that carries more than one name
+    (`wired`: each label's piece before labels joined by name). Some piece always does."""
+    names: dict[Point, set[str]] = defaultdict(set)
+    for net, pos in labels:
+        names[wired[pos]].add(net)
+    return tuple(sorted({pos for _, pos in labels if len(names[wired[pos]]) > 1}))
+
+
 @lru_cache(maxsize=CONNECT_MEMO)
 def _nets(
     pin_list: tuple[tuple[str, str, Point], ...],
@@ -147,6 +187,7 @@ def _nets(
         for p in points:
             if on_segment(p, a, b):
                 uf.union(p, a)
+    wired = {pos: uf.find(pos) for _, pos in labels}  # before labels join by name
     first_label_point: dict[str, Point] = {}
     for net, pos in labels:
         uf.union(pos, first_label_point.setdefault(net, pos))
@@ -156,11 +197,8 @@ def _nets(
         names_by_root[uf.find(pos)].add(net)
     for names in names_by_root.values():
         if len(names) > 1:
-            raise ConnectivityError(
-                f"Net labels {' and '.join(sorted(names))} are wired together. A net can have "
-                "only one name: remove a label or the wire joining them.",
-                tuple(sorted(names)),
-            )
+            raise ConnectivityError(clash_message(names), tuple(sorted(names)),
+                                    _clash_spots(labels, wired))  # fmt: skip
 
     pins_by_root: dict[Point, list[PinRef]] = defaultdict(list)
     for pin_ref, pos in sorted(pins.items()):

@@ -69,9 +69,9 @@ def test_every_part_and_label_is_drawn(page: Page, base_url: str) -> None:
     expect(page.locator("g.part")).to_have_count(len(starter["parts"]))
     expect(page.locator(".net-label")).to_have_count(len(starter["labels"]))
     expect(page.locator("#circuit-name")).to_have_text(starter["name"])
-    # opening probes the output: its labels are highlighted
-    outs = [lb for lb in starter["labels"] if lb["net"] == "out"]
-    assert page.locator('.net-label.probed[data-net="out"]').count() == len(outs) > 0
+    # opening rests on the amp (D-341): the Probe pane shows it, nothing is lit
+    expect(page.locator('[data-testid="probe-name"]')).to_have_text("OUT")
+    expect(page.locator(".probed, .selected")).to_have_count(0)
     # wired: the starter is drawn with wires, ground symbols and rail bars
     expect(page.locator("line.wire")).to_have_count(len(starter["wires"]))
     assert page.locator(".net-label.ground").count() > 0
@@ -282,6 +282,7 @@ def test_impedance_overlay_and_probe_row(page: Page, base_url: str) -> None:
     guitar = page.locator('g.part[data-ref="IN"]').bounding_box()
     under = zin.first.bounding_box()
     assert guitar and under and under["y"] > guitar["y"] + guitar["height"] - 2
+    click_net(page, "out")  # a net's Probe view has the row (the amp rests on opening, D-341)
     row = page.locator('#probe-body td[data-field="impedance"]')
     expect(row).to_have_text(re.compile("\u03a9$"))
     assert "everything connected" in (row.get_attribute("title") or "")
@@ -503,7 +504,13 @@ def test_the_palette_is_whole_before_a_circuit_loads(page: Page, base_url: str) 
     expect(tiles).to_have_count(5)
     assert [t.get_attribute("data-net") for t in tiles.all()] == [None, None, "V+", "V-", None]
     height = page.locator("#palette").evaluate("(el) => el.scrollHeight")
-    assert len(held) == 1  # the circuit hasn't come yet
+    # the palette can be drawn before the circuit is even asked for (under load): wait
+    # for the request, which is held, so the circuit still hasn't come (D-342)
+    for _ in range(200):
+        if held:
+            break
+        page.wait_for_timeout(50)
+    assert len(held) == 1
     held[0].continue_()
     wait_for_update(page, 0)
     assert page.locator("#palette").evaluate("(el) => el.scrollHeight") == height

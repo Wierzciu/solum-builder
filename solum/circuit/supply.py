@@ -11,9 +11,10 @@ cut off only when its + goes through the DC jack's battery lug, as wired (D-185)
 anywhere else it stays connected beside the adapter.
 """
 
+from contextlib import suppress
 from typing import Literal
 
-from solum.circuit.connectivity import Nets, connect
+from solum.circuit.connectivity import ConnectivityError, Nets, connect
 from solum.circuit.schema import SUPPLY_SIGNS, Battery, Circuit, DcJack
 from solum.units import parse_value
 
@@ -44,12 +45,17 @@ _last: tuple[Circuit, frozenset[str]] | None = None
 
 
 def battery_rails(circuit: Circuit) -> frozenset[str]:
-    """The positive rails the battery takes over when it powers the circuit (`_reached`)."""
+    """The positive rails the battery takes over when it powers the circuit (`_reached`);
+    none while the wiring contradicts itself (two labels joined mid-edit: the view still
+    draws it and says why, D-335)."""
     global _last
     last = _last
     if last is not None and last[0] is circuit:
         return last[1]
-    rails = _reached(circuit, connect(circuit)) if _battery(circuit) is not None else frozenset()
+    rails: frozenset[str] = frozenset()
+    if _battery(circuit) is not None:
+        with suppress(ConnectivityError):
+            rails = _reached(circuit, connect(circuit))
     _last = (circuit, rails)
     return rails
 

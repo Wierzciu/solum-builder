@@ -876,3 +876,55 @@ def test_the_mac_app_is_told_when_unsaved_work_comes_and_goes(js: Page) -> None:
         """,
     )
     assert got == [True, False]
+
+
+def test_pin_list_numbers_a_chip_as_counted_on_it(js: Page) -> None:
+    """D-336: a chip's pins by datasheet number in number order, its function after; any
+    other part's by name, as drawn."""
+    chip = {"out": {"net": "o", "number": 7}, "+": {"net": "p", "number": 5},
+            "-": {"net": "n", "number": 6}}  # fmt: skip
+    resistor = {"1": {"net": "a", "number": None}, "2": {"net": "b", "number": None}}
+    got = run(
+        js,
+        "const { pinList } = await m('panels.js'); return arg.map(pinList);",
+        [chip, resistor],
+    )
+    assert [r["label"] for r in got[0]] == ["5 (+)", "6 (-)", "7 (out)"]
+    assert [r["net"] for r in got[0]] == ["p", "n", "o"]
+    assert [r["label"] for r in got[1]] == ["pin 1", "pin 2"]
+
+
+def test_a_dropped_supply_turns_clear_of_its_wire(js: Page) -> None:
+    """D-338: as drawn when clear (a rail's bar up, ground down), else away from the wire,
+    else to the side: never on the wire it lands on."""
+    got = run(
+        js,
+        """
+        const { clearSupplyRot } = await m('editor/edit.js');
+        const c = { parts: [], wires: [{ from: [0, 0], to: [0, 40] }] };
+        const spots = [[0, 0, 'rail'], [0, 40, 'rail'], [0, 20, 'rail'], [0, 0, 'ground'],
+                       [0, 40, 'ground'], [100, 100, 'rail']].map(([x, y, k]) => clearSupplyRot(c, [x, y], k));
+        // a resistor at the origin (no pos in the file): its left pin's lead runs right
+        const r = { parts: [{ ref: 'R1', type: 'resistor', value: '1k' }], wires: [] };
+        return [...spots, clearSupplyRot(r, [-20, 0], 'ground')];
+        """,
+    )
+    assert got == [0, 180, 90, 180, 0, 0, 0]
+
+
+def test_drawn_pins_keep_dc_only_on_the_same_net(js: Page) -> None:
+    """D-337: after an edit the pin list is the drawing's; a voltage stays only beside the
+    net it was measured on."""
+    got = run(
+        js,
+        """
+        const { drawnPins } = await m('panels.js');
+        return drawnPins({ 1: { net: 'a', dc: 1 }, 2: { net: 'b', dc: 2 } },
+          [{ name: '1', net: 'a', number: null }, { name: '2', net: 'c' }, { name: '3', net: 'd', number: 3 }]);
+        """,
+    )
+    assert got == {
+        "1": {"net": "a", "dc": 1, "number": None},
+        "2": {"net": "c", "dc": None, "number": None},
+        "3": {"net": "d", "dc": None, "number": 3},
+    }

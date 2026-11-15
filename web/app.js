@@ -23,7 +23,7 @@ import { powerMenu } from "./power.js";
 import { inspector } from "./inspector.js";
 import { liveSliders, sliderFields } from "./live-sliders.js";
 import {
-  addLabel, addPart, addText, paletteEntry, groupRefs, withChips, addWires, applyDiff, deleteItems, drawnWire, findRef, moveWireEnd, wireDiff, moveItems, isUnwired, renameLabel, setText, addSupply, itemsAfterMove, itemsAt, rotateLabel, rotatePart, sameConnections, wireRun, updatePart,
+  addLabel, addPart, addText, clearSupplyRot, paletteEntry, groupRefs, withChips, addWires, applyDiff, deleteItems, drawnWire, findRef, moveWireEnd, wireDiff, moveItems, isUnwired, renameLabel, setText, addSupply, itemsAfterMove, itemsAt, rotateLabel, rotatePart, sameConnections, wireRun, updatePart,
 } from "./editor/edit.js";
 import { ask, closeForm, confirmed, formIsOpen, openForm } from "./editor/form.js";
 import { remember, remembered } from "./storage.js";
@@ -33,8 +33,9 @@ import { actionFor } from "./editor/keys.js";
 import { db, volts } from "./fixed.js";
 import { closeMenus } from "./menus.js";
 import { reorderable } from "./panes.js";
+import { refusalBar } from "./refusal.js";
 import { liveCurves, liveValues, nearestStep, readingRows } from "./live.js";
-import { h, knobControl, paneInfo, restoreLargeViews, shrinkLargeViews, renderDc, renderKnobs, renderNodeView, renderPartView, renderProbeFailed, renderProblems, renderReadings, renderSweepSummary, showKnob } from "./panels.js";
+import { h, knobControl, refreshPins, paneInfo, restoreLargeViews, shrinkLargeViews, renderDc, renderKnobs, renderNodeView, renderPartView, renderProbeFailed, renderProblems, renderReadings, renderSweepSummary, showKnob } from "./panels.js";
 import { barPlot, curvePlot, forgetColours, linePlot, liveLinePlot } from "./plots.js";
 import { desktopMenus, desktopUnsaved } from "./desktop.js";
 import { settingsSheet } from "./settings.js";
@@ -43,7 +44,7 @@ import { setSwitchKinds } from "./schematic/symbols.js";
 import {
   capacitorSeries, deviceCurve, frequencySeries, harmonicBars, scopeSeries, snapshotOf, sweepSummary, valueSweepSeries,
 } from "./series.js";
-import { dismissProblem, problemTarget, restoreProblem } from "./problems.js";
+import { dismissProblem, labelsAt, problemTarget, restoreProblem } from "./problems.js";
 import { debounce, focusNet, keptControls, latestOnly, oneAtATime, openingOf, withControls } from "./state.js";
 
 const KNOB_DEBOUNCE_MS = 120;
@@ -64,8 +65,20 @@ const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.get
 /** The part called `ref` on the open sheet. @param {string | null} ref @returns {any} */
 const partOf = (ref) => state.circuit?.parts.find((/** @type {any} */ p) => p.ref === ref);
 
-/** The output's net as a selection (what's probed when nothing else is), or null. @returns {Selection | null} */
-const outputSelection = () => (state.view?.probes.out ? { kind: "net", id: state.view.probes.out } : null);
+/**
+ * What's probed when nothing is selected (D-341): the amp, its input pin and DC, as a
+ * resting selection (not lit, not turned, deleted or copied); with no amp on the output,
+ * the output's net; else null. @returns {Selection | null}
+ */
+function outputSelection() {
+  const out = state.view?.probes.out;
+  if (!out) return null;
+  const amp = state.view.parts.find((/** @type {any} */ p) => p.type === "amp" && p.pins.some((/** @type {any} */ pin) => pin.net === out));
+  return amp ? { kind: "part", id: amp.ref, resting: true } : { kind: "net", id: out };
+}
+
+/** The selection the keys and menus act on: none while only the amp is resting (D-341). @returns {Selection | null} */
+const chosen = () => (state.selection?.resting ? null : state.selection);
 
 /**
  * @typedef {{kind: "starter" | "circuit" | "block" | "new" | "copy", id: string}} Source
@@ -203,6 +216,8 @@ const notes = notesPane($("notes-body"), $("notes-count"), {
     pane.scrollIntoView({ block: "nearest" });
   },
 });
+/** Why an edit was refused, over the canvas (D-335). */
+const refusal = refusalBar($("refusal"));
 const renameNote = renameNotice($("rename-notice"), {
   circuit: () => state.circuit,
   edit: (next, label) => tryEdit(next, label),
@@ -311,7 +326,11 @@ const schematic = new Schematic(/** @type {SVGSVGElement} */ (/** @type {unknown
   route: (a, b, horizontal, pending) => drawnWire(state.circuit, a, b, horizontal, pending),
   preview: (change) => {
     const next = "items" in change ? moveItems(state.circuit, change.items, change.dx, change.dy) : moveWireEnd(state.circuit, change.from, change.to);
-    return wireDiff(state.circuit.wires ?? [], next.wires ?? []);
+    // labels the move carries on a part's pins (a ground on R5), shown going along (D-339)
+    const before = state.circuit.labels ?? [];
+    const picked = new Set("items" in change ? change.items.labels ?? [] : []);
+    const labels = (next.labels ?? []).flatMap((/** @type {any} */ lb, /** @type {number} */ i) => (before[i] && !picked.has(i) && (before[i].pos[0] !== lb.pos[0] || before[i].pos[1] !== lb.pos[1]) ? [i] : []));
+    return { ...wireDiff(state.circuit.wires ?? [], next.wires ?? []), labels };
   },
   onPlace: (pos, wire) => place(pos, wire),
   onContext: (x, y, item) => menus.contextMenu(x, y, item),
@@ -369,11 +388,22 @@ const tiles = palette($("palette"), schematic, {
 
 
 /** @param {string | null} message */
-function showError(message) {
+/** What clicking the Results column's error shows on the sheet, if anything (D-335). */
+let errorPick = /** @type {(() => void) | null} */ (null);
+
+/**
+ * The Results column's error (null clears it). `pick`: clicking it shows where on the sheet.
+ * @param {string | null} message @param {(() => void) | null} [pick]
+ */
+function showError(message, pick = null) {
   const el = $("error");
   el.hidden = !message;
   el.textContent = message ?? "";
+  errorPick = message ? pick : null;
+  el.classList.toggle("pick", Boolean(errorPick));
+  el.title = errorPick ? "Show where on the sheet" : "";
 }
+$("error").addEventListener("click", () => errorPick?.());
 
 // ---- opening circuits ------------------------------------------------------------
 
@@ -533,6 +563,7 @@ async function editSession(name, source, owner) {
 /** @param {Source} source @param {boolean} [reload] the page's first open: large views put back by `restoreLargeViews` stay out */
 async function open(source, reload = false) {
   showError(null);
+  refusal.hide();
   if (!reload) backToEditor();
   const token = openRequests.next();
   opening = hashOf(source);
@@ -560,8 +591,8 @@ async function open(source, reload = false) {
   undoStack.clear();
   setDirty(false);
   show(view, { fit: true });
-  const start = view.probes.out ?? Object.keys(view.nets)[0];
-  await select(start ? { kind: "net", id: start } : null);
+  const first = Object.keys(view.nets)[0];
+  await select(outputSelection() ?? (first ? { kind: "net", id: first } : null));
 }
 
 /**
@@ -577,6 +608,7 @@ function show(view, { fit }) {
   showTitle();
   schematic.capTypes = state.capTypes;
   schematic.draw(view, switchPositions(), { fit });
+  showDrawnPins();
   if (state.problems?.result) showProblems(); // the circuit's dismissals may have changed (an undo)
   if (controlsChanged) {
     renderKnobs($("knobs-body"), view.controls, state.controls, onKnob, grabKnob, knobInUse);
@@ -589,6 +621,18 @@ function show(view, { fit }) {
   power.show();
   updateButtons();
   document.body.dataset.views = String(++state.views);
+}
+
+/**
+ * The probed part's pins as the drawing has them now (D-337): pins added or taken away by
+ * an edit, and nets changed by rewiring, show at once; DC waits for the next run.
+ */
+function showDrawnPins() {
+  const { part, sweep, view } = state;
+  if (!part || state.selection?.kind !== "part" || state.selection.id !== part.ref) return;
+  if (sweep?.ref === part.ref && sweep.parts?.length) return; // values tried: their own columns
+  const drawn = view.parts.find((/** @type {any} */ p) => p.ref === part.ref);
+  if (drawn) refreshPins($("probe-body"), part, drawn.pins, (n) => select({ kind: "net", id: n }));
 }
 
 /** @type {{circuit: any, key: string, played: any}} */
@@ -702,7 +746,7 @@ async function setCircuit(next, view, onRefused, restore, now = false) {
     onRefused?.();
     state.circuit = before;
     updateButtons();
-    showError(/** @type {Error} */ (err).message);
+    refusal.show(/** @type {Error} */ (err).message);
     return;
   }
   show(view, { fit: false });
@@ -723,7 +767,7 @@ function setStale(stale) {
 
 /** The Run button: simulate the circuit as it is now, at the probed point (or the output). */
 function run() {
-  if (!state.selection && state.view?.probes.out) return select({ kind: "net", id: state.view.probes.out });
+  if (!state.selection && state.view?.probes.out) return select(outputSelection());
   return refresh();
 }
 
@@ -846,7 +890,7 @@ function updateButtons() {
 /** What Delete would remove: the selected part, or the clicked wire or label; never the
  * circuit's guitar input or amp (D-146). */
 function deletable() {
-  const sel = state.selection;
+  const sel = chosen();
   if (!sel) return null;
   const fixed = fixedRefs(state.circuit);
   if (sel.kind === "items") {
@@ -863,7 +907,7 @@ function deletable() {
 
 async function deleteSelection() {
   let what = deletable();
-  const fixed = [...fixedRefs(state.circuit)].filter((r) => state.selection?.id === r || state.selection?.items?.parts.includes(r));
+  const fixed = [...fixedRefs(state.circuit)].filter((r) => chosen()?.id === r || chosen()?.items?.parts.includes(r));
   // said after the edit, whose redraw puts the usual hint back
   const kept = () => {
     if (fixed.length) hint(`${fixed.join(" and ")} ${fixed.length > 1 ? "stay" : "stays"}: every circuit has a guitar input and an amp.`);
@@ -897,7 +941,7 @@ async function deleteSelection() {
 
 function rotate() {
   if (state.placing) return schematic.rotateGhost();
-  const sel = state.selection;
+  const sel = chosen();
   if (sel?.kind === "part") edit(rotatePart(state.circuit, sel.id), `Rotate ${sel.id}`);
   // a supply's symbol (ground, V+, V-) turns too; a plain label's name finds its own side
   const label = sel?.kind === "items" && sel.items?.labels.length === 1 && !sel.items.parts.length && !sel.items.wires.length ? sel.items.labels[0] : sel?.label;
@@ -944,7 +988,9 @@ function stopPlacing() {
 async function place(pos, wire) {
   const type = state.placing;
   if (!type) return;
-  const rot = schematic.ghost?.rot ?? 0;
+  const ghost = schematic.ghost;
+  // a supply dropped unturned turns clear of the wire or pin it lands on (D-338)
+  const rot = ghost?.supply && !ghost.rot ? clearSupplyRot(state.circuit, pos, ghost.supply) : ghost?.rot ?? 0;
   const block = state.placingBlock;
   stopPlacing();
   if (type === "block" && block) return dropBlock(block, pos, wire);
@@ -1189,7 +1235,7 @@ function selectItems(items) {
  * @returns {import("./schematic/render.js").Items}
  */
 function currentItems() {
-  const sel = state.selection;
+  const sel = chosen();
   if (sel?.kind === "items" && sel.items) return sel.items;
   if (sel?.kind === "part") return { parts: [sel.id], wires: [], labels: [] };
   if (sel?.kind === "net" && sel.wire !== undefined) return { parts: [], wires: sel.run ?? [sel.wire], labels: [] };
@@ -1199,7 +1245,7 @@ function currentItems() {
 
 /** What the selection holds as items (a single part counts), or null. */
 function selectedItems() {
-  const sel = state.selection;
+  const sel = chosen();
   if (sel?.kind === "items" && sel.items && !isEmpty(sel.items)) return sel.items;
   if (sel?.kind === "part") return { parts: [sel.id], wires: [], labels: [] };
   return null;
@@ -1345,6 +1391,7 @@ function showProblems() {
   const count = renderProblems(body, result, (p) => {
     const target = problemTarget(p);
     if (target) select(target);
+    else if (p.at?.length) selectItems(labelsAt(state.view, p.at)); // labels wired together (D-335)
   }, state.openProblems, { dismissed: state.circuit?.dismissed, onDismiss: dismissDialog, onRestore: (p) => problemEdit(restoreProblem(state.circuit, p), "Bring back problem") });
   $("problem-count").textContent = count ? `\u00b7 ${count}` : "";
   schematic.showMarks(state.marks && result ? result.problems : []);
@@ -1426,7 +1473,8 @@ async function runSelected() {
   if (!shown) return;
   if (!isUnwired(state.circuit)) checkProblems();
   if (state.view?.problem) {
-    showError(state.view.problem);
+    const clash = state.view.clash ?? [];
+    showError(state.view.problem, clash.length ? () => selectItems(labelsAt(state.view, clash)) : null);
     return;
   }
   setStale(false);
@@ -1765,7 +1813,7 @@ function onKey(e) {
     case "wire": return setWireMode(!schematic.wireMode);
     case "rotate": return rotate();
     case "delete": return deleteSelection();
-    case "inspect": return state.selection?.kind === "part" ? forms.inspect(state.selection.id) : undefined;
+    case "inspect": return chosen()?.kind === "part" ? forms.inspect(/** @type {Selection} */ (chosen()).id) : undefined;
     case "undo": return undo();
     case "redo": return redo();
     case "save": return files.save().then(() => undefined);
