@@ -192,6 +192,36 @@ def api(page: Page, base_url: str, method: str, path: str, body: Any = None) -> 
 # ---- editing ---------------------------------------------------------------------
 
 
+def test_a_parts_form_opens_on_the_box_after_its_ref(page: Page, base_url: str) -> None:
+    """The user (2026-11-15): opening a cap or resistor put the cursor in Ref; the value is
+    what's edited. A part's form starts on its first box after Ref, IN and OUT too; a
+    label's form on its name, its text selected: double-click, type, Enter (D-350)."""
+    new_circuit(page, base_url, "Focus test")
+    show_area(page, -60, -60, 420, 280)
+    got = {}
+    for n, key in enumerate(["r", "c", "u", "s", "i", "a"]):
+        place(page, key, 180 * (n % 3), 220 * (n // 3))
+        press(page, "Enter")
+        expect(page.locator("form.popup")).to_be_visible()
+        got[key] = page.evaluate("document.activeElement.id")
+        press(page, "Escape")
+        expect(page.locator("form.popup")).to_have_count(0)
+    press(page, "l")
+    got["l"] = page.evaluate("document.activeElement.id")
+    assert got["r"] == got["c"] == "field-value"
+    assert got["l"] == "field-net"
+    assert all(v.startswith("field-") and v != "field-ref" for v in got.values()), got
+    press(page, "Escape")
+    # double-click, type, Enter: the value is selected, so typing replaces it
+    before = views(page)
+    page.locator('g.part[data-ref="R1"]').dblclick()
+    expect(page.locator("#field-value")).to_be_focused()
+    page.keyboard.type("4k7")
+    press(page, "Enter")
+    wait_for_view(page, before)
+    expect(page.locator('g.part-text[data-ref="R1"] .value')).to_have_text("4k7")
+
+
 def test_place_undo_redo(page: Page, base_url: str) -> None:
     new_circuit(page, base_url, "Undo test")
     place(page, "r", 0, 0)
@@ -1114,6 +1144,16 @@ def test_redraw_ts808_matches_the_starter(page: Page, base_url: str, half_drawn:
             click_at(page, *point)
         wait_for_view(page, before)
     press(page, "Escape")
+    # VREF draws as a supply once its cap is wired (D-225): select each turned one by its
+    # stem and turn it as the starter has it (D-347)
+    for label in starter["labels"]:
+        if label.get("rot"):
+            x, y = label["pos"]
+            click_at(page, x, y - 7)
+            for _ in range(label["rot"] // 90):
+                before = views(page)
+                press(page, "Space")
+                wait_for_view(page, before)
     press(page, "Control+s")
     expect(page.locator("#dirty")).to_be_hidden()
     # Half-drawn, parts may float with no DC path to ground: the panels say so plainly

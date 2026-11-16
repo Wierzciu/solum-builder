@@ -1963,3 +1963,19 @@ Calculators → *Filter* (`filterCalculator` in `web/tools.js`, `GET /api/tools/
 - `test_no_library_supply_symbol_points_along_its_own_wire` (`tests/unit/test_view.py`) checks every library file, so a new starter drawn by script (the build-starter skill) gets told if a symbol needs a turn.
 - **Why:** the user saw the TS808's VREF name across its wire. D-225 began drawing bias nets as supply bars after those starters were drawn, when VREF was a plain label that found its own side (D-114).
 *Alternatives:* turning the symbols at load time in the view (the file would say one thing and the drawing another; a user's Space would start from a turn they never saw).
+
+**D-348 — A part dropped on a wire its own length goes in series; only a jumper it already had stays** (2026-11-15) `editor`
+- Narrows D-113 and D-164. `inSeries` took any wire running exactly pin to pin for a jumper and kept it, so a part placed or moved onto a wire whose ends met its pins stayed shorted (the user's C1 on the leg of a bent wire; moving the bend one step made it work).
+- Now a stretch of wire pin to pin is cut whether or not it runs on past a pin, unless the part already had it pin to pin before the edit (`before`, passed by `moveItems` and `rotatePart`; a new part has none). A jumper the user drew across a part is carried along by its move or turn and stays, re-laid.
+- **Why:** the user (2026-11-15): dropped onto a line, a part should replace the wire under it; a wire that happens to fit it exactly is no jumper.
+*Alternatives:* never keeping a pin-to-pin wire (moving a deliberately jumpered part would delete its jumper); asking on each drop.
+
+**D-350 — A part's form opens on the box after its Ref, its text selected** (2026-11-15) `editor`
+- `openForm` focuses the first box you can type in after Ref (`startField` in `web/editor/form.js`): a resistor's or cap's value, a chip's model, a switch's kind, the guitar's and amp's first box. A read-only, disabled or hidden box is skipped. **Its text is selected**, so typing replaces it: double-click, type, Enter (the user). A text area isn't selected (one key would replace a whole note). A form with no Ref (a label's or supply's Name, the file dialogs) opens on its first usable box, as before; a part with nothing but Ref opens on Ref.
+- **Why:** the user (2026-11-15): the value is what's edited, so starting there makes editing more fluid; only labels, rails and ground should start on their name.
+*Alternatives:* a per-part-type focus field in `fields.js` (a list to keep up for one rule that holds for every part).
+
+**D-351 — A dragged wire shortens past the joints along a straight leg; a bend pushed past its far end is routed afresh** (2026-11-16) `editor`
+- Refines D-164's kept bends (`stretchRun`). A run's inner points are joints with nothing else on them (`relay`'s stops), so one lying part-way along a straight leg is no bend: it's dropped before the slide. Before, the slide stopped at it: OUT dragged left left its wire running on through the amp (the stretched first piece doubled back over the next), and IN dragged left kinked its wire to J1 at the old joint (the user's clean boost, saved in straight pieces).
+- A slide that would turn a leg back on itself (the bend pushed past the run's far end) returns null; `relay` routes that run afresh **after** the other wires (`late`), so it goes round them rather than making a straight wire detour round it.
+*Alternatives:* merging collinear pieces on save (rewrites wires the user didn't touch; drawn joints are harmless until something moves).
