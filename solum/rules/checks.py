@@ -12,6 +12,7 @@ from functools import cached_property
 
 from solum.analysis.dc import Saturation, opamp_input_limits, saturation
 from solum.bias import BiasError
+from solum.circuit.cables import battery_cutter, plug_said
 from solum.circuit.chips import halves, spare_ota, supply_nets, unused_halves
 from solum.circuit.connectivity import (
     GROUND,
@@ -63,7 +64,7 @@ from solum.circuit.schema import (
     Trimmer,
     VSource,
 )
-from solum.circuit.supply import battery_of, live_rails, on_battery, supply_volts
+from solum.circuit.supply import battery_of, live_rails, on_battery, powered_off, supply_volts
 from solum.circuit.switches import CUSTOM
 from solum.models import Model, ModelLibrary
 from solum.netlist import NetlistError, pump_frequency
@@ -725,17 +726,25 @@ def no_amp_output(ctx: Context) -> Iterator[Hit]:
 
 @check("topology")
 def battery_cable_out(ctx: Context) -> Iterator[Hit]:
-    """The battery alone powers the circuit, its - goes to a stereo jack's ring, and that
-    jack's cable is out: the ring is open, so the battery is cut off (D-185)."""
-    battery = on_battery(ctx.circuit)
-    if battery is None:
+    """The battery's - goes to a stereo jack's ring and there's no mono plug in it: the
+    ring is open, so the battery is cut off (D-185). Said whenever the battery is in use
+    (not cut off by a DC plug anyway), worded by what it leaves without power: the whole
+    circuit (`powered_off`) or only what the battery feeds (D-358)."""
+    battery, jack = battery_of(ctx.circuit, ctx.n), battery_cutter(ctx.circuit)
+    if battery is None or jack is None:
         return
-    minus = ctx.net(battery, "-")
-    for j in ctx.parts(Jack):
-        if j.stereo and j.plug != "mono" and ctx.net(j, "R") == minus:
-            # a stereo plug's ring is its own, so it doesn't join the ring to S (D-355)
-            why = "has no cable in" if j.plug == "none" else "has a stereo cable in"
-            yield Hit(j.ref, (minus,), {"battery": battery.ref, "cable": why})
+    plus = ctx.net(battery, "+")
+    if on_battery(ctx.circuit) is not None or powered_off(ctx.circuit):
+        left = "the circuit has no supply"
+    elif plus in live_rails(ctx.circuit):
+        return  # beside a DC plug on its rail: the supply still holds it, nothing goes off
+    else:
+        left = f"what it powers ({plus}) has no supply"
+    yield Hit(
+        jack.ref,
+        (ctx.net(battery, "-"),),
+        {"battery": battery.ref, "cable": plug_said(jack), "left": left},
+    )
 
 
 @check("topology")
