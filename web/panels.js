@@ -70,7 +70,8 @@ export function renderNodeView(el, view, run, net) {
   if (stats) rows.push(...statsRows(stats, outStats));
   const z = run?.impedance;
   if (z?.[net]) rows.push(["Impedance", impedanceCell("impedance", z[net]), ...(outStats !== undefined ? [impedanceCell("out-impedance", z[out])] : [])]);
-  const level = run?.tran ? h("p", { class: "empty" }, [`Scope stats at the ${run.tran.level} pick level (${volts(run.tran.amplitude, 1)} peak, ${run.tran.freq} Hz).`]) : h("p", { class: "empty" }, ["No guitar input in this circuit, so there's DC only."]);
+  const why = run?.no_power ? `No readings. ${run.no_power}` : "No guitar input in this circuit, so there's DC only."; // no power: no DC either (D-359)
+  const level = h("p", { class: "empty", ...(run?.no_power ? { "data-testid": "no-power" } : {}) }, [run?.tran ? `Scope stats at the ${run.tran.level} pick level (${volts(run.tran.amplitude, 1)} peak, ${run.tran.freq} Hz).` : why]);
   el.replaceChildren(
     h("div", { class: "probe-title" }, [h("span", { class: "name", "data-testid": "probe-name" }, [net]), h("span", { class: "kind" }, [info.rail ? "supply net" : "net"])]),
     ...noteBlock(info.note),
@@ -300,7 +301,12 @@ export function renderPartView(el, part, onNet, tried = null) {
   if (tried?.parts.length) return renderTriedPart(el, part, onNet, tried);
   // a part no current can reach is left out of the simulation (D-165): no readings to
   // show, so the pane says why in their place (D-318)
-  const detail = part.loose ? { rows: [], curve: false, hint: `${part.ref} isn't wired into the circuit, so the simulation leaves it out and there is nothing to measure. Wire it where it belongs to see its readings; Problems says what is open.` } : partDetail(part);
+  // with no power there's nothing real to read either (D-359)
+  const detail = part.loose
+    ? { rows: [], curve: false, hint: `${part.ref} isn't wired into the circuit, so the simulation leaves it out and there is nothing to measure. Wire it where it belongs to see its readings; Problems says what is open.` }
+    : part.no_power
+      ? { rows: [], curve: false, hint: `No readings. ${part.no_power}` }
+      : partDetail(part);
   const curveEl = detail.curve ? h("div", { class: "plot subplot", id: "device-plot" }) : null;
   el.replaceChildren(
     h("div", { class: "probe-title" }, [h("span", { class: "name", "data-testid": "probe-name" }, [part.ref]), h("span", { class: "kind" }, [`${part.type} · ${part.text}`])]),
@@ -320,7 +326,7 @@ export function renderPartView(el, part, onNet, tried = null) {
  * @param {{values: string[], parts: any[]}} tried @returns {null}
  */
 function renderTriedPart(el, part, onNet, tried) {
-  const details = tried.parts.map((p) => (p.loose ? [] : partDetail(p).rows));
+  const details = tried.parts.map((p) => (p.loose || p.no_power ? [] : partDetail(p).rows));
   /** @type {Array<[string, ...(Node|string)[]]>} */
   const rows = (details[0] ?? []).map(([label], i) => [label, ...details.map((d) => d[i]?.[1] ?? "—")]);
   const pinRows = pinList(part.pins).map(({ pin, label, net }) => {
@@ -355,6 +361,11 @@ export function renderProbeFailed(el, name, message) {
  * @param {HTMLElement} el @param {any} view @param {any} run @param {(net: string) => void} onNet
  */
 export function renderDc(el, view, run, onNet) {
+  if (run?.no_power) {
+    // op-amp models make a supply up with none: no voltages, the reason instead (D-359)
+    el.replaceChildren(h("p", { class: "empty", "data-testid": "dc-no-power" }, [`No voltages. ${run.no_power}`]));
+    return;
+  }
   const voltages = run?.op.voltages ?? {};
   const isRail = (/** @type {string} */ n) => view.nets[n]?.rail ?? !(n in view.nets);
   // supplies first, then the guitar's and the amp's nets, so they're easy to find (the
@@ -527,11 +538,12 @@ const BUILD_OPEN = "#build"; // and the Before you build section (D-203)
  * its reason and Bring back (D-176). Returns the heading's count text (not counting the
  * dismissed).
  * @param {HTMLElement} el
- * @param {{problems: import("./problems.js").Problem[], checked_op: boolean} | null} result
+ * @param {{problems: import("./problems.js").Problem[], checked_op: boolean, ratings?: {set: Record<string, number>, rules: string[]}} | null} result
  * @param {(problem: import("./problems.js").Problem) => void} onPick a click on a problem
  * @param {Set<string>} opened keys of the rows left open, and of the Dismissed section (kept up to date here)
  * @param {{dismissed?: import("./problems.js").Dismissal[], onDismiss?: (p: import("./problems.js").Problem) => void,
- *   onRestore?: (p: import("./problems.js").Problem) => void}} [dismissal] the circuit's dismissals, and what the buttons do
+ *   onRestore?: (p: import("./problems.js").Problem) => void, onRatings?: (ratings: Record<string, number>) => void}} [dismissal]
+ *   the circuit's dismissals, and what the buttons do (`onRatings`: Use suggested ratings, D-360)
  * @returns {string}
  */
 export function renderProblems(el, result, onPick, opened, dismissal = {}) {
@@ -571,7 +583,11 @@ export function renderProblems(el, result, onPick, opened, dismissal = {}) {
     b.addEventListener("click", () => run?.());
     return h("p", { class: "problem-actions" }, [b]);
   };
-  const dismissable = (/** @type {import("./problems.js").Problem} */ p) => (dismissal.onDismiss ? [action("Dismiss\u2026", "problem-dismiss", () => dismissal.onDismiss?.(p))] : []);
+  // a missing or wrong capacitor rating: fill every one the server suggests, as one edit (D-360)
+  const fill = result.ratings && Object.keys(result.ratings.set).length ? result.ratings : null;
+  const ratingsFor = (/** @type {import("./problems.js").Problem} */ p) =>
+    fill && dismissal.onRatings && fill.rules.includes(p.rule) ? [action("Use suggested ratings", "problem-ratings", () => dismissal.onRatings?.(fill.set))] : [];
+  const dismissable = (/** @type {import("./problems.js").Problem} */ p) => [...ratingsFor(p), ...(dismissal.onDismiss ? [action("Dismiss\u2026", "problem-dismiss", () => dismissal.onDismiss?.(p))] : [])];
   const rows = active.map((p) => row(p, dismissable(p)));
   const gone = dismissed.map(({ problem: p, reason }) =>
     row(p, [

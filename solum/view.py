@@ -13,6 +13,7 @@ from solum.circuit.connectivity import GROUND, ConnectivityError, Nets, connect,
 from solum.circuit.io import circuit_to_dict
 from solum.circuit.parts import COMP_PINS, pin_positions
 from solum.circuit.pump import pump_wiring
+from solum.circuit.ratings import cap_rating_view
 from solum.circuit.schema import (
     CHIP_UNITS,
     POLARISED,
@@ -171,10 +172,13 @@ def controls(circuit: Circuit) -> list[dict[str, Any]]:
                  "contacts": [f"{name}: {contacts_text(kind, i)}"
                               for i, name in enumerate(kind.positions)]}
             )  # fmt: skip
-        elif isinstance(p, DcJack) and any(isinstance(q, Battery) for q in circuit.parts):
-            found.append(  # the jack's plug picks the supply (D-143): a switch, in effect
+        elif isinstance(p, DcJack):
+            # the jack's plug picks the supply (D-143), or is the only one (D-359): a switch
+            battery = any(isinstance(q, Battery) for q in circuit.parts)
+            found.append(
                 {"ref": p.ref, "kind": "switch", "label": "Power", "refs": [p.ref],
-                 "position": 0 if p.plugged else 1, "positions": ["DC jack", "Battery"],
+                 "position": 0 if p.plugged else 1,
+                 "positions": ["DC jack", "Battery"] if battery else ["Plugged in", "Unplugged"],
                  "field": "plugged", "values": [True, False]}
             )  # fmt: skip
         elif isinstance(p, Jack) and p.ref in jacks:
@@ -395,6 +399,7 @@ def _unconnected_view(
         "probes": {"in": None, "out": None},
         "controls": controls(circuit),
         "power": power_chip(circuit),
+        "cap_rating": cap_rating_view(circuit),  # filled on choosing the type (D-360)
         "battery_wiring": None,
         "problem": str(err),
         "clash": [list(p) for p in err.at],
@@ -468,6 +473,7 @@ def circuit_view(
         "probes": {"in": probes.input, "out": probes.output},
         "controls": controls(circuit),
         "power": power_chip(circuit),
+        "cap_rating": cap_rating_view(circuit),  # filled on choosing the type (D-360)
         "battery_wiring": battery_wiring(circuit, nets),
         "problem": None,
     }
