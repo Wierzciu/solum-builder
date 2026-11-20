@@ -27,6 +27,7 @@
       <button type="button" id="help-menu">Help</button>
     </nav>
     <span class="sep" aria-hidden="true"></span>
+    <button type="button" id="board-button" class="board-button" aria-pressed="false" title="Lay out a stripboard for this circuit">Board</button>
     <span class="title">
       <h1 id="circuit-name" class="circuit-name"></h1>
       <span class="name-edit">
@@ -58,9 +59,16 @@
   </header>
   <main class="workspace">
     <nav class="palette" aria-label="Parts" id="palette"></nav>
+    <aside class="board-tray" id="board-tray" aria-label="Tray" hidden>
+      <h2>Tray <span class="count" id="board-tray-count"></span></h2>
+      <div id="board-tray-body"></div>
+    </aside>
     <section class="canvas" aria-label="Schematic">
       <div class="canvas-body" id="canvas-body">
         <svg id="schematic" role="img" aria-label="Circuit schematic"></svg>
+        <svg id="board" role="img" aria-label="Stripboard" hidden></svg>
+        <div id="board-tools" class="board-tools" role="group" aria-label="Board tools" hidden><button type="button" data-tool="parts" aria-pressed="true" title="Place and move parts (P)">Parts</button><button type="button" data-tool="cuts" aria-pressed="false" title="Click a hole to cut the strip there, a cut to mend it (C)">Cuts</button><button type="button" data-tool="links" aria-pressed="false" title="Drag down a column to lay a link; click a link to lift it (K)">Links</button></div>
+        <div id="board-size" class="board-size" hidden><span id="board-size-text"></span> <button type="button" id="board-trim" class="board-trim" title="Take the empty columns and strips off the board's edges" hidden>Trim</button> <button type="button" id="board-wire" class="board-trim" title="Put the pots, jacks and power beside the board and wire each lug to the nearest free hole on its strip" hidden>Wire it for me</button></div>
         <div id="rename-notice" class="rename-notice" role="status" hidden></div>
         <div id="refusal" class="refusal" role="alert" hidden></div>
         <div class="zoom" role="group" aria-label="Zoom">
@@ -147,6 +155,24 @@
       <details open id="panel-audio">
         <summary>Audio</summary>
         <div class="panel-body large-split" id="audio-body"></div>
+      </details>
+    </aside>
+    <aside class="board-panels" id="board-panels" aria-label="Board" hidden>
+      <details open id="board-warnings">
+        <summary>Warnings <span class="count" id="board-warnings-count"></span></summary>
+        <div class="panel-body" id="board-warnings-body"></div>
+      </details>
+      <details open id="board-schematic">
+        <summary>Schematic</summary>
+        <div class="panel-body"><svg id="board-sheet" role="img" aria-label="Circuit schematic, small"></svg></div>
+      </details>
+      <details open id="board-nets">
+        <summary>Nets <span class="count" id="board-nets-count"></span></summary>
+        <div class="panel-body" id="board-nets-body"></div>
+      </details>
+      <details id="board-settings">
+        <summary>Settings</summary>
+        <div class="panel-body" id="board-settings-body"></div>
       </details>
     </aside>
   </main>

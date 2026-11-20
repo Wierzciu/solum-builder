@@ -38,9 +38,10 @@ from solum.circuit.switches import (
     custom_kind,
     kind_of,
 )
+from solum.stripboard.board import Layout, layout_from_data
 from solum.units import format_quantity, format_value, parse_value
 
-SCHEMA_VERSION: Final = 34
+SCHEMA_VERSION: Final = 36
 
 Point = tuple[int, int]
 Rotation = Literal[0, 90, 180, 270]
@@ -710,8 +711,43 @@ class Enclosure(_Model):
         return self
 
 
+class BoardWire(_Model):
+    """An off-board wire (v36, D-375): `from` a lug (`VR1.2`, `IN.S`, `V+`) to a `hole` on
+    the board, to another `lug`, or loose (neither)."""
+
+    from_: str = Field(alias="from")
+    hole: str | None = None
+    lug: str | None = None
+
+
+class Stripboard(_Model):
+    """The board laid out in the Board view (v35, D-368): the plain form `board.layout_data`
+    writes, holes by name. Only its form is checked here; whether it matches the circuit
+    (a part since deleted, a leg on the wrong net) is the editor's progress check. v36
+    (D-375): off-board parts' spots beside the board and their wires, for v35's pads."""
+
+    size: tuple[int, int]  # columns, strips
+    parts: dict[str, dict[str, str]] = Field(default_factory=dict)  # ref → leg → hole
+    standing: list[str] = Field(default_factory=list)
+    cuts: list[str] = Field(default_factory=list)
+    links: list[tuple[str, str]] = Field(default_factory=list)
+    wires: list[BoardWire] = Field(default_factory=list)
+    off: dict[str, tuple[int, int]] = Field(default_factory=dict)  # ref → [column, strip]
+
+    @model_validator(mode="after")
+    def _readable(self) -> Self:
+        if min(self.size) < 1:
+            raise ValueError("A stripboard has at least one column and one strip.")
+        self.layout()  # a hole that isn't one is a BoardError
+        return self
+
+    def layout(self) -> Layout:
+        """The board as the stripboard code reads it."""
+        return layout_from_data(self.model_dump(by_alias=True))
+
+
 class Circuit(_Model):
-    schema_: Literal[34] = Field(alias="schema")
+    schema_: Literal[36] = Field(alias="schema")
     id: str = Field(pattern=ID_PATTERN)
     name: str
     description: str = ""
@@ -731,6 +767,7 @@ class Circuit(_Model):
     net_notes: dict[str, NoteText] = Field(default_factory=dict)  # by net name (v30)
     dismissed: list[Dismissal] = Field(default_factory=list)  # problems dismissed (D-176)
     enclosure: Enclosure | None = None  # the box it's built in (v23, D-204)
+    stripboard: Stripboard | None = None  # the board laid out in the Board view (v35, D-368)
 
     @model_validator(mode="after")
     def _unique_refs(self) -> Self:

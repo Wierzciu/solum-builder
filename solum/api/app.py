@@ -85,6 +85,7 @@ from solum.guides import (
     GuideError,
     battery_guide,
     capacitor_guide,
+    footprint_table,
     inductor_guide,
     pickup_guide,
 )
@@ -130,6 +131,13 @@ from solum.simulate import (
     simulator_from_settings,
 )
 from solum.store import CircuitStore, StoreError, blank_circuit, split_id
+from solum.stripboard.board import Layout, layout_data
+from solum.stripboard.check import progress, shorts
+from solum.stripboard.edit import BoardEdit, EditError, EditKind, edit_layout
+from solum.stripboard.footprints import board_parts, board_refs, drawing_data
+from solum.stripboard.offboard import off_board_items
+from solum.stripboard.size import Axis, SizeError, insert_line, remove_line, start_size, trim
+from solum.stripboard.wiring import WiringError, wire_for_me
 from solum.units import parse_value
 from solum.view import circuit_view
 from solum.wiring import wiring_page
@@ -175,6 +183,33 @@ class PartRequest(BaseModel):
 
 class CircuitRequest(BaseModel):
     circuit: dict[str, Any]
+
+
+class BoardSizeRequest(BaseModel):
+    """A change to the open circuit's board size (D-372): `insert` a line before `at`,
+    `remove` line `at`, or `trim` the empty edges."""
+
+    circuit: dict[str, Any]
+    change: Literal["insert", "remove", "trim"]
+    axis: Axis = "column"
+    at: int = 0
+
+
+class BoardEditRequest(BaseModel):
+    """A hand edit of the open circuit's board (D-374): `edit` one of `edit.BoardEdit`'s
+    kinds, holes as [column, strip] from 0 (the margin's negative); `grow` auto-grow,
+    `shorts` whether an edit may make a short (the editor's settings)."""
+
+    circuit: dict[str, Any]
+    kind: EditKind
+    ref: str = ""
+    legs: dict[str, tuple[int, int]] = {}
+    standing: bool = False
+    holes: list[tuple[int, int]] = []
+    to: str | None = None  # a wire's other lug (D-375)
+    index: int = -1  # the wire `unwire` and `rewire` act on
+    grow: bool = True
+    shorts: bool = True
 
 
 def check_tone(tone: float) -> None:
@@ -1060,6 +1095,90 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         found, checked = checker.check(circuit, sim)
         return {"problems": [asdict(p) for p in found], "checked_op": checked,
                 "ratings": ratings_to_fill(circuit, checked)}  # fmt: skip
+
+    @app.post("/api/stripboard")
+    def stripboard(req: CircuitRequest) -> dict[str, Any]:
+        """The Board view's progress check (D-368) of the open circuit's board (none yet:
+        an empty one): what's left to place, each net, each leg, what's wrong now; with
+        each board part's footprint to draw it by (`footprints`), each off-board part's
+        drawing's size in holes (`items[].size`, D-375), and the size an empty board starts
+        at (`start_size`, D-372)."""
+        circuit = parse_circuit(req.circuit)
+        board = circuit.stripboard
+        layout = board.layout() if board else Layout(0, 0, ())
+        table = footprint_table(settings.library_dir)
+        found = progress(layout, circuit, models, table)
+        parts = board_parts(circuit, models, table)[0]
+        items = [{**asdict(i), "size": i.size} for i in found.items]
+        return {**asdict(found), "items": items, "nets_done": found.nets_done,
+                "footprints": drawing_data(parts),
+                "start_size": list(start_size(parts))}  # fmt: skip
+
+    @app.post("/api/stripboard/size")
+    def stripboard_size(req: BoardSizeRequest) -> dict[str, Any]:
+        """The open circuit's board with a line inserted or taken out, or trimmed (D-372):
+        its new plain form, for the page to apply as an edit; a change that can't be made
+        is a 422 saying why."""
+        circuit = parse_circuit(req.circuit)
+        if circuit.stripboard is None:
+            raise HTTPException(
+                422, "Place something on the board first: an empty board has no size yet."
+            )
+        layout = circuit.stripboard.layout()
+        parts = board_parts(circuit, models, footprint_table(settings.library_dir))[0]
+        try:
+            if req.change == "trim":
+                changed = trim(layout, parts)
+            elif req.change == "insert":
+                changed = insert_line(layout, parts, req.axis, req.at)
+            else:
+                changed = remove_line(layout, parts, req.axis, req.at)
+        except SizeError as err:
+            raise HTTPException(422, str(err)) from None
+        return {"stripboard": layout_data(changed)}
+
+    @app.post("/api/stripboard/edit")
+    def stripboard_edit(req: BoardEditRequest) -> dict[str, Any]:
+        """The open circuit's board with one hand edit made (D-374): its new plain form and
+        `shift` (how far its holes moved as the board grew or shrank at the top or left),
+        for the page to apply as an edit. One that can't be made is a 422 saying why; with
+        `shorts` off, so is one that joins two nets the circuit keeps apart."""
+        circuit = parse_circuit(req.circuit)
+        table = footprint_table(settings.library_dir)
+        parts = board_parts(circuit, models, table)[0]
+        kept = circuit.stripboard
+        layout = kept.layout() if kept else Layout(*start_size(parts), ())
+        edit = BoardEdit(req.kind, req.ref, tuple(req.legs.items()), req.standing,
+                         tuple(req.holes), req.to, req.index)  # fmt: skip
+        items = {i.ref: tuple(lug.end for lug in i.lugs)
+                 for i in off_board_items(circuit, connect(circuit), parts, models)}  # fmt: skip
+        try:
+            edited = edit_layout(layout, edit, parts, started=kept is not None, grow=req.grow,
+                                 items=items, known=board_refs(circuit))  # fmt: skip
+        except EditError as err:
+            raise HTTPException(422, str(err)) from None
+        if not req.shorts:
+            was = shorts(layout, circuit, models, table)
+            new = [words for pair, words in shorts(edited.layout, circuit, models, table).items()
+                   if pair not in was]  # fmt: skip
+            if new:
+                raise HTTPException(422, f"{new[0]} Shorts are off in Settings.")
+        return {"stripboard": layout_data(edited.layout), "shift": list(edited.shift)}
+
+    @app.post("/api/stripboard/wire")
+    def stripboard_wire(req: CircuitRequest) -> dict[str, Any]:
+        """*Wire it for me* (D-375): the open circuit's board with its off-board parts put
+        beside it and every lug still to wire wired; nothing to do is a 422 saying why."""
+        circuit = parse_circuit(req.circuit)
+        table = footprint_table(settings.library_dir)
+        kept = circuit.stripboard
+        if kept is None:
+            raise HTTPException(422, "Place the parts on the board first: then their wires.")
+        try:
+            wired = wire_for_me(kept.layout(), circuit, models, table)
+        except WiringError as err:
+            raise HTTPException(422, str(err)) from None
+        return {"stripboard": layout_data(wired)}
 
     @app.post("/api/part")
     def part(req: PartRequest) -> dict[str, Any]:

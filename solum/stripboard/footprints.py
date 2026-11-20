@@ -72,6 +72,11 @@ class BoardPart:
     free: frozenset[str] = field(default_factory=frozenset)
     kind: str = ""  # its type, for the words: resistor, bjt, chip...
 
+    @property
+    def legs(self) -> tuple[str, ...]:
+        """Its leg names: in a line's or a chip's order, else its pins'."""
+        return self.footprint.order or tuple(self.pins)
+
 
 class NoFootprint(ValueError):
     """A part the table has no size for (plain-English message)."""
@@ -195,6 +200,17 @@ def _chip(ref: str, units: Sequence[Part], model: Model, table: FootprintTable) 
     return BoardPart(ref, shape, pins, free, kind="chip")
 
 
+def board_ref(part: Part) -> str:
+    """The board part a circuit part is on: a chip unit's chip (`IC1` for `IC1A`), else its
+    own ref."""
+    return part.chip if isinstance(part, (PowerUnit, *CHIP_UNITS)) else part.ref
+
+
+def board_refs(circuit: Circuit) -> set[str]:
+    """Every board part the circuit has, placeable now or not (D-376)."""
+    return {board_ref(p) for p in circuit.parts if built_where(p) == "board"}
+
+
 def board_parts(circuit: Circuit, models: ModelLibrary,
                 table: FootprintTable) -> tuple[dict[str, BoardPart], list[str]]:  # fmt: skip
     """The parts that go on the board, by board ref, and what can't go on one (plain
@@ -233,6 +249,23 @@ def board_parts(circuit: Circuit, models: ModelLibrary,
     return found, problems
 
 
+def drawing_data(parts: dict[str, BoardPart]) -> dict[str, dict[str, object]]:
+    """What the Board view draws each board part from (D-368), as plain JSON: its shape,
+    legs in order, the spacings allowed, the body in mm, and `refs` the circuit parts on it
+    (a chip's units), so selecting it lights them on the schematic."""
+    out: dict[str, dict[str, object]] = {}
+    for ref, part in sorted(parts.items()):
+        fp = part.footprint
+        out[ref] = {
+            "shape": fp.shape, "kind": part.kind, "legs": list(part.legs),
+            "steps": list(fp.steps), "flat": fp.flat, "stand": fp.stand,
+            "length": fp.length, "width": fp.width, "diameter": fp.diameter,
+            "row_holes": fp.row_holes,
+            "refs": sorted({pin[0] for pin in part.pins.values()} or {ref}),
+        }  # fmt: skip
+    return out
+
+
 def _line(holes: list[Hole]) -> tuple[int, int] | None:
     """The unit step from each hole to the next when they're in a straight row or column
     with equal gaps, as (dx, dy) in holes, else None."""
@@ -263,7 +296,7 @@ def dip_legs(pins: int, pin1: Hole, turned: bool = False, row_holes: int = 3) ->
 def leg_problem(part: BoardPart, legs: dict[str, Hole], standing: bool) -> str | None:
     """What's wrong with where the legs are, in plain English, or None."""
     fp = part.footprint
-    names = set(fp.order) if fp.order else set(part.pins)
+    names = set(part.legs)
     if set(legs) != names:
         want = ", ".join(sorted(names))
         return f"{part.ref} needs exactly its legs placed ({want})."

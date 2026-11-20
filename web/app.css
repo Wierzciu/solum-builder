@@ -74,6 +74,12 @@ header > *, .menus button, .run-group button, .autorun { white-space: nowrap; fl
 header .sep { width: 1px; align-self: stretch; margin: 2px 0; background: var(--border); }
 .menus button { background: transparent; border-color: transparent; color: var(--text-2); }
 .menus button:hover, .menus button[aria-expanded="true"] { border-color: var(--border); background: var(--surface-2); color: var(--text); }
+/* the Board button (D-370): quiet as the menu words with no board, a brass mark once one is
+   started, pressed in the Board view; never greyed (clicking it is how a board starts) */
+.board-button { position: relative; background: transparent; border-color: transparent; color: var(--text-2); }
+.board-button:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }
+.board-button.marked::after { content: ""; position: absolute; top: 4px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.board-button[aria-pressed="true"] { border-color: var(--border); background: var(--info-bg); color: var(--text); }
 .power { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
 /* who powers the pedal when the drawing has a battery or a DC jack (D-145) */
 .power-chip { color: var(--text-2); font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; white-space: nowrap; flex: none; } /* as the Not saved chip */
@@ -298,6 +304,122 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 .zoom { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; }
 .zoom button { min-width: 30px; height: 28px; background: var(--surface-2); font-size: 14px; line-height: 1; }
 .zoom #fit-button { font-size: 12px; }
+/* Schematic / Board (D-368): two views of the circuit on the one canvas */
+.board-size { position: absolute; left: 12px; bottom: 12px; margin: 0; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-2); pointer-events: none; }
+.board-size[hidden], .board-trim[hidden] { display: none; } /* Trim and Wire it for me */
+.board-trim { pointer-events: auto; margin-left: 8px; padding: 1px 8px; font: 12px var(--font-ui); }
+body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-show="board"] .panels { display: none; }
+/* the Tray: the palette's place in the Board view (D-371) */
+.board-tray { width: 232px; flex: none; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--border); padding: 6px 10px 16px; font-size: 13px; }
+.board-tray[hidden] { display: none; }
+.board-tray h2, .board-tray h3 { font-family: var(--font-display); font-weight: 300; text-transform: uppercase; letter-spacing: 0.2em; font-size: 10px; color: var(--text-3); margin: 10px 2px 6px; }
+.board-tray h2 { color: var(--text-2); }
+.board-tray h3 { margin-top: 16px; }
+.board-tray .count { letter-spacing: 0; }
+.board-tray .board-subhead { margin: 8px 0 2px; font-size: 12px; color: var(--text-3); }
+.board-tray .board-list { list-style: none; margin: 0; padding: 0; }
+.board-tray .board-list li { padding: 3px 2px; color: var(--text-2); border-radius: 3px; }
+.board-tray .board-list li.pickable { cursor: pointer; }
+.board-tray .board-list li.pickable:hover { background: var(--surface-2); }
+.board-tray .board-list .ref { font-family: var(--font-mono); color: var(--text); margin-right: 6px; }
+.board-tray .board-list .value { font-family: var(--font-mono); margin-right: 6px; }
+.board-tray .board-list .shape { color: var(--text-3); }
+.board-tray .unplaceable li { color: var(--text-3); }
+.board-tray .done { color: var(--text-2); }
+/* a footprint's mark beside its row: axial a bar, radial a circle, in a line three legs, DIP a notched box */
+.board-tray .fp { display: inline-block; width: 14px; height: 8px; margin-right: 6px; vertical-align: middle; border: 1.5px solid var(--text-3); box-sizing: border-box; }
+.board-tray .fp-axial { height: 6px; border-radius: 2px; }
+.board-tray .fp-radial { width: 9px; height: 9px; margin: 0 8.5px 0 2.5px; border-radius: 50%; }
+.board-tray .fp-inline, .board-tray .fp-sil { border: none; background: radial-gradient(circle, var(--text-3) 1.6px, transparent 1.8px) 0 0 / 4.67px 8px repeat-x; }
+.board-tray .fp-dip { height: 10px; border-radius: 1px; background: radial-gradient(circle at 0 50%, var(--text-3) 2px, transparent 2.2px); }
+#board { flex: 1; width: 100%; min-height: 0; background-color: var(--surface-0); touch-action: none; user-select: none; cursor: default; }
+#board[hidden] { display: none; }
+#board.panning { cursor: grabbing; }
+#board .board-margin { fill: none; }
+#board .board-base { fill: var(--board-base); stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#board .strip { fill: var(--board-copper); }
+#board .hole { fill: var(--board-hole); }
+#board .hole.off { fill: var(--grid-dot); opacity: 0.45; }
+#board .board-fixed .hole.off { opacity: 0.18; } /* auto-grow off: the margin greyed (D-372) */
+#board .ruler { cursor: pointer; }
+#board .ruler-hit { fill: transparent; }
+#board .ruler text { font: 4px var(--font-mono); fill: var(--text-3); }
+#board .ruler:hover text { fill: var(--accent-hi); }
+#board .cut { stroke: var(--error); stroke-width: 1.5; vector-effect: non-scaling-stroke; fill: none; }
+#board .link { stroke: var(--sch-line); stroke-width: 1.2; }
+#board .link-end { fill: var(--sch-line); }
+/* off-board parts beside the board and their wires (D-375) */
+#board .off-item { cursor: grab; }
+#board .off-body { fill: var(--surface-1); stroke: var(--sch-line); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+#board .off-power .off-body { stroke-dasharray: 3 2; }
+#board .off-item.selected .off-body { stroke: var(--sch-selected); stroke-width: 2.2; }
+#board .off-label { font: 3.2px var(--font-ui); fill: var(--text); pointer-events: none; }
+#board .off-label .value { font-family: var(--font-mono); fill: var(--text-2); }
+#board .lug { cursor: crosshair; }
+#board .lug-ring { fill: var(--board-base); stroke: var(--brass); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+#board .lug:hover .lug-ring { stroke: var(--accent-hi); stroke-width: 2; }
+#board .lug-label { font: 2.6px var(--font-mono); fill: var(--text-2); pointer-events: none; }
+#board .off-wire .wire { stroke: var(--brass); stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+#board .off-wire.loose .wire { stroke-dasharray: 3 2; }
+#board .off-wire line { pointer-events: none; } /* only its ends are picked up: a press on the line reaches the part under it */
+#board .wire-end { fill: var(--brass); cursor: move; }
+#board .off-wire.loose .far-end { fill: var(--surface-2); stroke: var(--brass); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#board .off-wire:hover .wire { stroke: var(--accent-hi); }
+#board .ghost .wire { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 2 1.5; vector-effect: non-scaling-stroke; }
+#board .ghost .off-body { stroke: var(--accent); stroke-dasharray: 3 2; }
+#board .board-part { cursor: pointer; }
+#board .board-part .body { fill: var(--surface-2); stroke: var(--sch-line); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+#board .board-part .lead { stroke: var(--sch-line); stroke-width: 1; }
+#board .board-part .leg { fill: var(--sch-line); }
+#board .board-part.selected .body { stroke: var(--sch-selected); stroke-width: 2.5; }
+#board .board-part.selected .lead, #board .board-part.selected .leg { stroke: var(--sch-selected); fill: var(--sch-selected); }
+#board .board-part.stale .leg { fill: var(--error); }
+/* editing (D-374): the tools, a part carried, a link being laid, shorted copper */
+.board-tools { position: absolute; left: 12px; top: 12px; display: flex; gap: 0; }
+.board-tools[hidden] { display: none; }
+.board-tools button { padding: 3px 10px; font: 12px var(--font-ui); border-radius: 0; background: var(--surface-2); }
+.board-tools button:first-child { border-radius: 4px 0 0 4px; }
+.board-tools button:last-child { border-radius: 0 4px 4px 0; }
+.board-tools button + button { margin-left: -1px; }
+.board-tools button[aria-pressed="true"] { background: var(--info-bg); color: var(--text); border-color: var(--accent); position: relative; }
+#board[data-tool="cuts"], #board[data-tool="links"] { cursor: crosshair; }
+#board.carrying { cursor: grabbing; }
+#board .strip.shorted { fill: var(--error); opacity: 0.45; }
+#board .ghost { pointer-events: none; opacity: 0.6; }
+#board .ghost .body { fill: var(--surface-2); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+#board .ghost .lead { stroke: var(--accent); stroke-width: 1; }
+#board .ghost .leg { fill: var(--accent); }
+#board .ghost .link { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 2 1.5; }
+#board .ghost .aim { fill: none; stroke: var(--accent); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+#board .link-hit { stroke: transparent; stroke-width: 5; }
+#board[data-tool="links"] .board-link { cursor: pointer; }
+#board[data-tool="links"] .board-link:hover .link { stroke: var(--error); }
+.board-tray .board-list li.carriable { cursor: grab; touch-action: none; user-select: none; }
+#board .board-label { font: 3.2px var(--font-ui); fill: var(--text); pointer-events: none; paint-order: stroke; stroke: var(--surface-2); stroke-width: 0.8px; }
+#board .board-label .value { font-family: var(--font-mono); fill: var(--text-2); }
+#board .board-label.selected .ref { fill: var(--sch-selected); }
+.board-panels .board-progress { margin: 0 0 8px; color: var(--text); }
+.board-panels .board-list { list-style: none; margin: 0; padding: 0; }
+.board-panels .board-list li { padding: 3px 0; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.board-panels .board-list li:last-child { border-bottom: none; }
+.board-panels .board-list .ref, .board-panels .board-list .net { font-family: var(--font-mono); color: var(--text); margin-right: 6px; }
+.board-panels .board-list .value { font-family: var(--font-mono); margin-right: 6px; }
+.board-panels .board-list .shape { color: var(--text-3); }
+.board-panels .board-list li[data-net] { cursor: pointer; }
+.board-panels .board-list li[data-net]:hover .net { color: var(--accent-hi); }
+.board-panels .board-subhead { margin: 10px 0 4px; font-size: 12px; color: var(--text-3); }
+.board-panels .remove-board { margin-top: 12px; }
+.board-panels .board-stale { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; color: var(--text); }
+.board-panels .board-stale .clear-stale { margin-left: 4px; }
+.board-panels .board-subhead:first-child { margin-top: 0; }
+.board-panels .board-list .wires { font-family: var(--font-mono); color: var(--text-3); }
+.board-panels .board-setting { display: block; padding: 3px 0; color: var(--text); cursor: pointer; }
+.board-panels .board-setting.later { color: var(--text-3); cursor: default; }
+.board-panels .net-done .state { color: var(--ok); }
+.board-panels .net-shorted .state { color: var(--error); }
+.board-panels .warnings .fault { color: var(--error); }
+.board-panels .warnings .warning { color: var(--warning); }
+.board-panels #board-sheet { display: block; width: 100%; height: 240px; background: var(--surface-0); border: 1px solid var(--border); touch-action: none; user-select: none; }
 
 /* Schematic elements */
 .schematic line, .schematic path, .schematic rect, .schematic circle {
@@ -380,18 +502,18 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 .schematic .problem-mark.sev-info > * { fill: var(--text-3); }
 
 /* Panels */
-.panels {
+.panels, .board-panels {
   width: 440px;
   flex: none;
   overflow-y: auto;
   background: var(--surface-1);
   border-left: 1px solid var(--border);
 }
-.panels details { border-bottom: 1px solid var(--border); }
+.panels details, .board-panels details { border-bottom: 1px solid var(--border); }
 /* a pane holds its last height while a reload fills it, so the list's scroll comes back (D-121) */
-.panels > details:not(.large-view) { min-height: var(--reserve, 0px); }
-.panels:not([data-ready]) > * { visibility: hidden; } /* until the scroll is put back */
-.panels summary {
+.panels > details:not(.large-view), .board-panels > details { min-height: var(--reserve, 0px); }
+.panels:not([data-ready]) > *, .board-panels:not([data-ready]) > * { visibility: hidden; } /* until the scroll is put back */
+.panels summary, .board-panels summary {
   font-family: var(--font-display);
   font-weight: 300;
   text-transform: uppercase;
@@ -402,15 +524,15 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
   color: var(--text);
   list-style-position: inside;
 }
-.panels details[open] > summary { background: var(--surface-2); }
-.panels summary { position: relative; }
+.panels details[open] > summary, .board-panels details[open] > summary { background: var(--surface-2); }
+.panels summary, .board-panels summary { position: relative; }
 /* the grip: two columns of three dots drawn here, not a glyph, so it's the same size on
    every pane whatever the font (a heading font without ⋮ widened it under Expand) */
-.panels .grip { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); box-sizing: content-box; width: 8px; height: 14px; padding: 2px 4px; color: var(--text-3); background: radial-gradient(circle, currentColor 1.2px, transparent 1.5px) content-box 0 0 / 4px 4.67px; cursor: grab; touch-action: none; user-select: none; }
-.panels .grip:hover, .panels .grip:focus-visible { color: var(--accent-hi); outline: none; }
-.panels details.moving { opacity: 0.5; }
-.panels .pane-drop { height: 2px; background: var(--accent-hi); }
-body:has(.panels details.moving) { cursor: grabbing; }
+.panels .grip, .board-panels .grip { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); box-sizing: content-box; width: 8px; height: 14px; padding: 2px 4px; color: var(--text-3); background: radial-gradient(circle, currentColor 1.2px, transparent 1.5px) content-box 0 0 / 4px 4.67px; cursor: grab; touch-action: none; user-select: none; }
+.panels .grip:hover, .panels .grip:focus-visible, .board-panels .grip:hover, .board-panels .grip:focus-visible { color: var(--accent-hi); outline: none; }
+.panels details.moving, .board-panels details.moving { opacity: 0.5; }
+.panels .pane-drop, .board-panels .pane-drop { height: 2px; background: var(--accent-hi); }
+body:has(.panels details.moving, .board-panels details.moving) { cursor: grabbing; }
 .panel-body { padding: 12px 16px 16px; }
 .panel-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 .segmented { display: inline-flex; }
@@ -459,7 +581,7 @@ body:has(.panels details.moving) { cursor: grabbing; }
 .warning::before { content: "▲ "; color: var(--warning); }
 
 /* Problems (D-077) */
-.panels summary .count { font-family: var(--font-ui); text-transform: none; letter-spacing: 0; color: var(--text-2); margin-left: 6px; }
+.panels summary .count, .board-panels summary .count { font-family: var(--font-ui); text-transform: none; letter-spacing: 0; color: var(--text-2); margin-left: 6px; }
 .problem-list, .dc-list { overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .problem-list { max-height: 300px; } /* about six problems */
 .dc-list { max-height: 200px; } /* about the Harmonics plot */
