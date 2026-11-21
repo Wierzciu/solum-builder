@@ -92,17 +92,17 @@ def test_a_circuit_without_a_board_shows_its_parts_to_place(page: Page, base_url
     page.locator("#board-button").click()
     expect(page.locator("#board-size-text")).to_have_text("Empty board")
     # the Tray on the left (D-371): the 8 board parts by kind; off the board VR1, the
-    # guitar's and amp's jacks, Power (D-375), the stock footswitch and status LED (D-370)
+    # guitar's and amp's jacks, Power (D-375); nothing stock (D-385)
     expect(page.locator("#board-tray")).to_be_visible()
-    expect(page.locator("#board-tray-count")).to_have_text("· 14 left")
-    expect(page.locator("#board-tray-body li[data-ref]")).to_have_count(14)
+    expect(page.locator("#board-tray-count")).to_have_text("· 12 left")
+    expect(page.locator("#board-tray-body li[data-ref]")).to_have_count(12)
     kinds = ["Resistors", "Capacitors", "Transistors"]
     expect(page.locator("#board-tray-body .board-subhead")).to_have_text(kinds)
     expect(page.locator("#board-tray-body li[data-ref='Q1']")).to_contain_text("in a line")
-    off = page.locator("#board-tray-body .off-board li")
+    off = page.locator("#board-tray-body .off-board li")  # each with its move button (D-385)
     expect(off).to_have_text([
-        "VR1 (Volume) A10k log (A)", 'IN (Input) ¼" jack TS', 'OUT (Output) ¼" jack TS',
-        "Power the supply's wires", "Footswitch 3PDT stock, true bypass", "Status LED stock",
+        "VR1 (Volume) A10k log (A)↑ On board", 'IN (Input) ¼" jack TS↑ On board',
+        'OUT (Output) ¼" jack TS↑ On board', "Power the supply's wires",
     ])  # fmt: skip
     # a row selects its part on the small schematic
     page.locator("#board-tray-body li[data-ref='R2']").click()
@@ -651,3 +651,29 @@ def test_ratsnest_lines_all_or_only_the_part_in_focus(page: Page, base_url: str)
     showing(False)
     box.check()
     showing(True)
+
+
+def test_a_part_is_moved_between_the_tray_s_lists_by_choice(page: Page, base_url: str) -> None:
+    """D-385: in the tray, R2's button moves it to *Off the board*, marked as the builder's
+    choice; dragged back to *On the board*, the choice is gone; a pot's button refuses with
+    why; Ctrl+Z undoes a move."""
+    open_with_board(page, base_url, {"size": [12, 9]})
+    page.locator("#board-button").click()
+    r2 = page.locator("#board-tray .tray-section[data-where='board'] li[data-ref='R2']")
+    r2.hover()
+    r2.locator(".where-move").click()
+    off = page.locator("#board-tray-body .off-board li", has_text="R2")
+    expect(off).to_contain_text("off the board: your choice")
+    expect(r2).to_have_count(0)
+    page.keyboard.press("Control+z")
+    expect(r2).to_have_count(1)
+    page.keyboard.press("Control+Shift+z")
+    expect(off).to_have_count(1)
+    target = page.locator("#board-tray .tray-section[data-where='board'] h3")
+    off.drag_to(target)
+    expect(r2).to_have_count(1)
+    expect(off).to_have_count(0)
+    pot = page.locator("#board-tray-body .off-board li", has_text="VR1")
+    pot.hover()
+    pot.locator(".where-move").click(force=True)  # greyed, yet a click says why
+    expect(page.locator("#refusal")).to_contain_text("There's no board footprint for a pot yet.")

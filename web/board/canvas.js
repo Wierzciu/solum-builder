@@ -158,16 +158,17 @@ export function boardCanvas(svg, app) {
   /**
    * Draw a board. `fit`: fit the view to it (the first time it's shown).
    * @param {Board} board @param {Record<string, Footprint>} footprints @param {any} circuit
-   * @param {{fit?: boolean, values?: boolean, rulers?: boolean, fixed?: boolean, shorted?: Array<[number, number, number]>, rails?: Record<string, Array<[number, number, number]>>, off?: OffBoard, guide?: Guide, seeThrough?: boolean}} [opts]
+   * @param {{fit?: boolean, values?: boolean, rulers?: boolean, fixed?: boolean, shorted?: Array<[number, number, number]>, rails?: Record<string, Array<[number, number, number]>>, off?: OffBoard, guide?: Guide, seeThrough?: boolean, chosen?: Record<string, string>}} [opts]
    *   `values`: label parts with their values too; `rulers`: the columns' letters and the
    *   strips' numbers, each a menu of size changes (a board that's started); `fixed`: auto-grow
    *   off, the margin greyed (D-372); `shorted`: the copper carrying two nets, red (D-374);
    *   `rails`: the copper carrying only a rail, by net, tinted (Highlight rails, D-381);
    *   `off`: the off-board parts and wires (D-375); `guide`: the guidance (D-377);
-   *   `seeThrough`: the parts' bodies faint, the copper and cuts under them showing (D-378)
+   *   `seeThrough`: the parts' bodies faint, the copper and cuts under them showing (D-378);
+   *   `chosen`: the parts moved on or off the board by choice, each its mark's words (D-385)
    */
-  function draw(board, footprints, circuit, { fit: fitting = false, values = true, rulers = false, fixed = false, shorted = [], rails = {}, off = { items: [], wires: [] }, guide = { rats: [], cuts: [], links: [] }, seeThrough = false } = {}) {
-    drawn = [board, footprints, circuit, { values, rulers, fixed, shorted, rails, off, guide, seeThrough }];
+  function draw(board, footprints, circuit, { fit: fitting = false, values = true, rulers = false, fixed = false, shorted = [], rails = {}, off = { items: [], wires: [] }, guide = { rats: [], cuts: [], links: [] }, seeThrough = false, chosen = {} } = {}) {
+    drawn = [board, footprints, circuit, { values, rulers, fixed, shorted, rails, off, guide, seeThrough, chosen }];
     holes = shownHoles(board);
     beside = null;
     for (const { item, at } of off.items) {
@@ -219,7 +220,7 @@ export function boardCanvas(svg, app) {
       for (const [x, y] of [[x1, y1], [x2, y2]]) el("circle", { cx: x, cy: y, r: STEP * 0.18, class: "link-end" }, g);
     }
     const items = el("g", { class: "off-items" }, root);
-    for (const { item, at } of off.items) drawItem(item, at, items, values);
+    for (const { item, at } of off.items) drawItem(item, at, items, values, chosen[item.ref] ? "off-item chosen" : undefined, chosen[item.ref]);
     if (rulers) {
       const ruled = el("g", { class: "rulers" }, root);
       const mark = (/** @type {"column" | "strip"} */ axis, /** @type {number} */ line, /** @type {number} */ x, /** @type {number} */ y, /** @type {string} */ text) => {
@@ -237,7 +238,8 @@ export function boardCanvas(svg, app) {
     const labels = el("g", { class: "board-labels" }, root); // over every body
     for (const placed of board.parts) {
       const fp = footprints[placed.ref];
-      const g = el("g", { class: fp ? `board-part kind-${fp.kind}${fp.look?.minus ? " polarised" : ""}` : "board-part stale", "data-ref": placed.ref }, parts);
+      const g = el("g", { class: fp ? `board-part kind-${fp.kind}${fp.look?.minus ? " polarised" : ""}${chosen[placed.ref] ? " chosen" : ""}` : "board-part stale", "data-ref": placed.ref }, parts);
+      if (chosen[placed.ref]) el("title", {}, g).textContent = `${placed.ref}, ${chosen[placed.ref]}`;
       if (!fp) {
         // no longer in the circuit, or no footprint: its legs only, marked
         for (const [, hole] of placed.legs) el("circle", { cx: holeXY(hole)[0], cy: holeXY(hole)[1], r: STEP * 0.3, class: "leg" }, g);
@@ -316,22 +318,35 @@ export function boardCanvas(svg, app) {
   }
 
   /**
-   * An off-board part: its body with its name, its lugs along the bottom, labelled.
+   * An off-board part: its body with its name, its lugs labelled. A row of lugs hangs
+   * below a box named inside; a switch is drawn as the real one from behind (D-384): a
+   * footswitch's rounded square, a toggle's slim box, a rotary's disc, the lugs inside,
+   * the name above and each lug's label beside it.
    * @param {OffItem} item @param {Hole} at @param {Element} parent @param {boolean} values @param {string} [cls]
+   * @param {string} [mark] why it's off the board when that's the builder's choice (D-385)
    */
-  function drawItem(item, at, parent, values, cls = "off-item") {
-    const { body, lugs } = itemShape(item, at);
-    const g = el("g", { class: `${cls} off-${item.kind}`, "data-item": item.ref, "data-refs": itemRefs(item).join(" ") }, parent);
-    el("rect", { x: body.x, y: body.y, width: body.w, height: body.h, rx: 2, class: "off-body" }, g);
-    const text = el("text", { x: body.x + body.w / 2, y: body.y + body.h / 2, class: "off-label", "text-anchor": "middle" }, g);
+  function drawItem(item, at, parent, values, cls = "off-item", mark = "") {
+    const { body, lugs, wall } = itemShape(item, at);
+    const g = el("g", { class: `${cls} off-${item.kind} off-shape-${item.shape}`, "data-item": item.ref, "data-refs": itemRefs(item).join(" ") }, parent);
+    if (item.shape === "rotary") el("circle", { cx: body.x + body.w / 2, cy: body.y + body.h / 2, r: body.w / 2, class: "off-body" }, g);
+    else el("rect", { x: body.x, y: body.y, width: body.w, height: body.h, rx: item.shape === "stomp" ? STEP * 0.8 : 2, class: "off-body" }, g);
     const value = values && item.value ? item.value : "";
-    el("tspan", { x: body.x + body.w / 2, dy: value ? "-0.15em" : "0.35em", class: "ref" }, text).textContent = item.kind === "power" ? item.name : item.ref;
-    if (value) el("tspan", { x: body.x + body.w / 2, dy: "1.05em", class: "value" }, text).textContent = value;
-    el("title", {}, g).textContent = item.name;
+    const name = item.kind === "power" ? item.name : item.ref;
+    if (wall) {
+      const text = el("text", { x: body.x + body.w / 2, y: body.y + body.h / 2, class: "off-label", "text-anchor": "middle" }, g);
+      el("tspan", { x: body.x + body.w / 2, dy: value ? "-0.15em" : "0.35em", class: "ref" }, text).textContent = name;
+      if (value) el("tspan", { x: body.x + body.w / 2, dy: "1.05em", class: "value" }, text).textContent = value;
+    } else {
+      const text = el("text", { x: body.x + body.w / 2, y: body.y - STEP * 0.3, class: "off-label", "text-anchor": "middle" }, g);
+      el("tspan", { class: "ref" }, text).textContent = name;
+      if (value) el("tspan", { dx: "0.5em", class: "value" }, text).textContent = value;
+    }
+    el("title", {}, g).textContent = mark ? `${item.name}, ${mark}` : item.name;
     for (const lug of lugs) {
       const l = el("g", { class: "lug", "data-lug": lug.end }, g);
       el("circle", { cx: lug.x, cy: lug.y, r: STEP * 0.32, class: "lug-ring" }, l);
-      el("text", { x: lug.x, y: lug.y - STEP * 0.45, class: "lug-label", "text-anchor": "middle" }, l).textContent = lug.label;
+      const label = wall ? { x: lug.x, y: lug.y - STEP * 0.45, "text-anchor": "middle" } : { x: lug.x + STEP * 0.42, y: lug.y - STEP * 0.3, "text-anchor": "start" };
+      el("text", { ...label, class: "lug-label" }, l).textContent = lug.label;
       el("title", {}, l).textContent = `${item.ref} ${lug.label}: drag to a hole or another lug to wire it`;
     }
   }

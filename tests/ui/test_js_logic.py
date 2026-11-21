@@ -988,8 +988,8 @@ def test_the_power_chip_follows_the_cable_and_dc_switches(js: Page) -> None:
 
 def test_the_board_tray_and_settings(js: Page) -> None:
     """The Board view's tray: on-board parts with footprint, off-board parts as the parts
-    list names them, then the stock bypass (D-370); the editor's settings read with
-    defaults for anything missing or garbled."""
+    list names them, nothing stock (D-385); the editor's settings read with defaults for
+    anything missing or garbled."""
     got = run(
         js,
         """
@@ -1003,7 +1003,6 @@ def test_the_board_tray_and_settings(js: Page) -> None:
             { ref: 'IN', name: 'IN (Input)', kind: 'jack', value: '¼" jack', details: 'TS', lugs: [{ end: 'IN.out', label: 'T', net: 'in' }], size: [3, 3] },
           ],
           spots: { VR1: [0, -7], SW1: [5, -7], IN: [16, 0] },
-          stock: ['footswitch', 'status LED'],
         };
         const circuit = { parts: [{ ref: 'R1', value: '4k7' }, { ref: 'IC1A', model: 'TL072' }] };
         return {
@@ -1021,8 +1020,6 @@ def test_the_board_tray_and_settings(js: Page) -> None:
     assert got["off"] == [  # IN is wired (a board from pads): beside the board, not in the tray
         {"ref": "VR1 (Gain)", "value": "B100k", "shape": "linear (B)", "item": "VR1"},
         {"ref": "SW1", "value": "SPDT", "shape": "switch", "item": "SW1"},
-        {"ref": "Footswitch", "value": "3PDT", "shape": "stock, true bypass", "item": None},
-        {"ref": "Status LED", "value": "", "shape": "stock", "item": None},
     ]
     assert got["groups"] == [["Resistors", ["R1"]], ["Chips", ["IC1"]]]
     assert got["wires"] == "1 of 3 placed; a wire from VR1 lug 2"
@@ -1127,16 +1124,23 @@ def test_off_board_parts_lugs_and_wires_are_drawn_where_they_sit(js: Page) -> No
         js,
         """
         const b = await m('board/board-logic.js');
-        const pot = { ref: 'VR1', name: 'VR1', kind: 'pot', value: '', details: '', size: [7, 3],
+        const pot = { ref: 'VR1', name: 'VR1', kind: 'pot', value: '', details: '', shape: 'row',
+          size: [7, 3], places: [[1, 2], [3, 2], [5, 2]],
           lugs: ['1', '2', '3'].map((n) => ({ end: `VR1.${n}`, label: n, net: n })) };
-        const jack = { ref: 'IN', name: 'IN', kind: 'jack', value: '', details: '', size: [5, 3],
+        const jack = { ref: 'IN', name: 'IN', kind: 'jack', value: '', details: '', shape: 'row',
+          size: [5, 3], places: [[1, 2], [3, 2]],
           lugs: [{ end: 'IN.out', label: 'T', net: 'in' }, { end: 'IN.S', label: 'S', net: 'GND' }] };
+        const stomp = { ref: 'SW1', name: 'SW1', kind: 'switch', value: '', details: '', shape: 'stomp',
+          size: [7, 7], places: [[1, 3], [1, 1], [1, 5]],
+          lugs: ['A2', 'A1', 'A3'].map((n) => ({ end: `SW1A.${n}`, label: n, net: n })) };
         const board = b.readBoard({ size: [4, 4], off: { VR1: [0, -7] },
           wires: [{ from: 'VR1.1', hole: 'B2' }, { from: 'VR1.3', lug: 'IN.S' }, { from: 'VR1.2' }] });
         const progress = { items: [pot, jack], spots: { VR1: [9, 9], IN: [8, 0] } };
         const lugs = b.lugPlaces(progress, board);
         return {
           shape: b.itemShape(pot, [0, -7]),
+          stomp: b.itemShape(stomp, [0, 10]),
+          soft: b.wireObstacles({ parts: [] }, {}, [{ item: stomp, at: [0, 10] }, { item: pot, at: [0, -7] }]),
           lugs: Object.keys(lugs),
           wires: board.wires.map((w) => b.wireLine(w, lugs)),
           spot: b.spotFor(pot, [10, -5]),
@@ -1148,6 +1152,12 @@ def test_off_board_parts_lugs_and_wires_are_drawn_where_they_sit(js: Page) -> No
         """,
     )
     assert got["shape"]["body"] == {"x": -5, "y": -75, "w": 70, "h": 20}
+    # a footswitch (D-384): its lugs inside the whole square, which wires may cross at a cost
+    assert got["stomp"]["body"] == {"x": -5, "y": 95, "w": 70, "h": 70} and not got["stomp"]["wall"]
+    lugs = [(lug["x"], lug["y"]) for lug in got["stomp"]["lugs"]]
+    assert lugs == [(10, 130), (10, 110), (10, 150)]
+    assert got["soft"]["soft"] == [got["stomp"]["body"]]
+    assert got["soft"]["boxes"] == [got["shape"]["body"]]
     assert [(lug["x"], lug["y"]) for lug in got["shape"]["lugs"]] == [
         (10, -50),
         (30, -50),
@@ -1299,3 +1309,29 @@ def test_a_board_part_is_drawn_with_its_markings(js: Page) -> None:
     assert got["cap"] == ["lead", "lead", "circle", "stripe"] and got["capAngle"] == 90
     assert got["to92"] == ["lead", "lead", "lead", "body"]
     assert got["chip"] == ["rect", "notch", "dot"] and got["label"] == "pin 3"
+
+
+def test_the_moves_on_and_off_the_board_by_choice(js: Page) -> None:
+    """D-385: a part in the tray moves to its other list, on the board or off it (with why
+    when it can't); its mark says when it's there by choice."""
+    got = run(
+        js,
+        """
+        const b = await m('board/board-logic.js');
+        const move = (c, ref) => { const w = b.whereMove(c, ref); return w && [w.label, w.to, w.why, w.edit]; };
+        return {
+          on: move({ where: 'board', moved: false, why: null }, 'R2'),
+          pot: move({ where: 'off-board', moved: false, why: 'No footprint.' }, 'VR1'),
+          moved: move({ where: 'off-board', moved: true, why: null }, 'R2'),
+          none: move(undefined, 'power'),
+          marks: [b.choiceMark({ where: 'off-board', moved: true, why: null }),
+                  b.choiceMark({ where: 'board', moved: true, why: null }),
+                  b.choiceMark({ where: 'board', moved: false, why: null })],
+        };
+        """,
+    )
+    assert got["on"] == ["↓ Off board", "off-board", None, "Move R2 off the board"]
+    assert got["pot"] == ["↑ On board", "board", "No footprint.", "Put VR1 on the board"]
+    assert got["moved"] == ["↑ On board", "board", None, "Put R2 on the board"]
+    assert got["none"] is None
+    assert got["marks"] == ["off the board: your choice", "on the board: your choice", ""]

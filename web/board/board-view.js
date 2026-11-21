@@ -38,7 +38,7 @@ import { latestOnly } from "../state.js";
 import { remember, remembered } from "../storage.js";
 import { boardCanvas } from "./canvas.js";
 import { needsCard } from "./needs.js";
-import { BOARD_SETTINGS, boardRefOf, drawnBoard, firstPose, holeName, isOut, itemRefs, legNeeds, legsAt, legsData, lineChanges, linkFrom, lugPlaces, markedHoles, runAt, middleOf, moveWords, netWords, netsLine, netsOf, offBoardRows, partsOnNet, posed, poseOf, readBoard, readSettings, shownHoles, sizeLine, spotFor, staleLine, suggestionsLine, trayGroups, trayRows, wireLine, wireObstacles, wireRoutes } from "./board-logic.js";
+import { BOARD_SETTINGS, boardRefOf, choiceMark, drawnBoard, firstPose, holeName, isOut, itemRefs, legNeeds, legsAt, legsData, lineChanges, linkFrom, lugPlaces, markedHoles, runAt, middleOf, moveWords, netWords, netsLine, netsOf, offBoardRows, partsOnNet, posed, poseOf, readBoard, readSettings, shownHoles, sizeLine, spotFor, staleLine, suggestionsLine, trayGroups, trayRows, whereMove, wireLine, wireObstacles, wireRoutes } from "./board-logic.js";
 
 /**
  * @typedef {import("../schematic/render.js").Selection} Selection
@@ -222,13 +222,48 @@ export function boardView(host, app) {
     if (!trayPress || !(carry || carryItem)) return void (trayPress = null);
     const moved = Math.hypot(e.clientX - trayPress.x, e.clientY - trayPress.y) > 3;
     trayPress = null;
+    lightDrop(null);
     if (!moved) return;
+    const list = trayListAt(e.clientX, e.clientY);
+    if (list) {
+      const ref = carryItem ? carryItem.item.ref : carry?.ref;
+      const from = carryItem ? "off-board" : "board";
+      drop();
+      if (ref && list !== from) moveWhere(ref);
+      return;
+    }
     const over = /** @type {Element | null} */ (e.target)?.closest?.("#board");
     const hole = canvas.holeAt(e.clientX, e.clientY);
     if (!over) drop();
     else if (carryItem) void putItem(hole);
     else void putDown(hole);
   });
+
+  // a tray row dragged over the tray's other list: lit as a drop it takes, or won't (D-385)
+  window.addEventListener("pointermove", (e) => {
+    if (!trayPress || !(carry || carryItem)) return;
+    const list = trayListAt(e.clientX, e.clientY);
+    const from = carryItem ? "off-board" : "board";
+    if (!list || list === from) return lightDrop(null);
+    const ref = carryItem ? carryItem.item.ref : carry?.ref ?? "";
+    const move = whereMove(progress?.choices?.[ref], ref);
+    lightDrop(list, !move || move.why ? "no" : "ok");
+  });
+
+  /** The tray's list (on the board, off it) under a point, if any. @param {number} x @param {number} y */
+  function trayListAt(x, y) {
+    const at = document.elementFromPoint(x, y)?.closest?.("#board-tray .tray-section");
+    return /** @type {HTMLElement | null} */ (at)?.dataset.where ?? null;
+  }
+
+  /** Light the tray's `where` list as a drop it takes or won't; none clears. @param {string | null} where @param {"ok" | "no"} [how] */
+  function lightDrop(where, how = "ok") {
+    for (const list of tray.querySelectorAll(".tray-section")) {
+      const here = /** @type {HTMLElement} */ (list).dataset.where === where;
+      list.classList.toggle("drop-ok", here && how === "ok");
+      list.classList.toggle("drop-no", here && how === "no");
+    }
+  }
 
   /** @param {"parts" | "cuts" | "links"} which */
   function setTool(which) {
@@ -471,6 +506,25 @@ export function boardView(host, app) {
     openMenu(x, y, [{ label: "Back to the tray, with its wires", run: () => void boardEdit({ kind: "unspot", ref }, `${ref} back to the tray`) }]);
   }
 
+  /**
+   * Move a part in the tray to its other list (D-385): built on the board or off it; one
+   * that can't go is refused with why. @param {string} ref
+   */
+  function moveWhere(ref) {
+    const move = whereMove(progress?.choices?.[ref], ref);
+    if (!move) return;
+    if (move.why) return void app.refuse(move.why);
+    void boardEdit({ kind: "where", ref, to: move.to }, move.edit);
+  }
+
+  /** Each part moved on or off the board by choice, its mark's words (D-385). */
+  function chosenMarks() {
+    /** @type {Record<string, string>} */
+    const marks = {};
+    for (const [ref, choice] of Object.entries(progress?.choices ?? {})) if (choice.moved) marks[ref] = choiceMark(choice);
+    return marks;
+  }
+
   /** The off-board parts beside the board and their wires, as the canvas draws them. */
   function offBoard() {
     if (!progress) return { items: [], wires: [] };
@@ -685,7 +739,7 @@ export function boardView(host, app) {
     const guide = guidanceNow();
     svg.dataset.rats = settings.rats ? "all" : "focus";
     canvas.draw(drawn, progress?.footprints ?? {}, circuit, {
-      fit: !fitted, values: settings.values, rulers: started, fixed: !settings.grow, shorted: checked === circuit ? progress?.shorted ?? [] : [], rails: settings.rails && checked === circuit ? progress?.rails ?? {} : {}, off: offBoard(), seeThrough: settings.seeThrough,
+      fit: !fitted, values: settings.values, rulers: started, fixed: !settings.grow, shorted: checked === circuit ? progress?.shorted ?? [] : [], rails: settings.rails && checked === circuit ? progress?.rails ?? {} : {}, off: offBoard(), seeThrough: settings.seeThrough, chosen: chosenMarks(),
       guide: guide ? { rats: guide.ratsnest, cuts: guide.cuts, links: guide.links } : undefined,
     });
     fitted ||= Boolean(drawn.columns && progress); // an empty board's size and the off-board parts come with the first check
@@ -728,6 +782,20 @@ export function boardView(host, app) {
         ...(r.mark ? [h("span", { class: `fp fp-${r.mark}`, "aria-hidden": "true" })] : []),
         h("span", { class: "ref" }, [r.ref]), " ", ...(r.value ? [h("span", { class: "value" }, [r.value]), " "] : []), h("span", { class: "shape" }, [r.shape]),
       ]);
+      const key = r.item ?? (progress?.footprints[r.ref] ? r.ref : null);
+      const mark = key ? choiceMark(progress?.choices?.[key]) : "";
+      if (mark) item.append(h("span", { class: "choice" }, [`· ${mark}`]));
+      const move = key ? whereMove(progress?.choices?.[key], key) : null;
+      if (key && move) {
+        item.dataset.move = key;
+        const button = h("button", { type: "button", class: "where-move", "aria-disabled": String(Boolean(move.why)), title: move.why ?? `${move.edit.replace(key, "it")}` }, [move.label]);
+        button.addEventListener("pointerdown", (e) => e.stopPropagation()); // not a pick-up
+        button.addEventListener("click", (e) => {
+          e.stopPropagation();
+          moveWhere(key);
+        });
+        item.append(button);
+      }
       const pick = r.select && (progress?.footprints[r.select] || inCircuit.has(r.select)) ? r.select : null;
       if (pick) {
         item.classList.add("pickable");
@@ -767,12 +835,18 @@ export function boardView(host, app) {
     const section = (title, count, body) => (count ? [h("h3", {}, [title, " ", h("span", { class: "count" }, [String(count)])]), ...body] : []);
     $("board-tray-count").textContent = left ? `· ${left} left` : "";
     const next = settings.next ? progress.guidance.next : null;
+    /** One of the tray's two lists, a part dragged to the other moving it there (D-385). @param {string} where @param {string} title @param {number} count @param {HTMLElement[]} body */
+    const list = (where, title, count, body) => h("section", { class: "tray-section", "data-where": where }, [
+      h("h3", {}, [title, " ", h("span", { class: "count" }, [String(count)])]), ...body,
+    ]);
     $("board-tray-body").replaceChildren(
       ...(next ? [nextNote(next)] : []),
-      ...(on || unplaceable.length
-        ? section("On the board", on, groups.flatMap((g) => [h("p", { class: "board-subhead" }, [g.title]), h("ul", { class: "board-list" }, g.rows.map(row))]))
+      list("board", "On the board", on, on
+        ? groups.flatMap((g) => [h("p", { class: "board-subhead" }, [g.title]), h("ul", { class: "board-list" }, g.rows.map(row))])
         : [h("p", { class: "empty done" }, ["✓ Every part is on the board."])]),
-      ...section("Off the board", off.length, [h("ul", { class: "board-list off-board" }, off.map(row))]),
+      list("off-board", "Off the board", off.length, off.length
+        ? [h("ul", { class: "board-list off-board" }, off.map(row))]
+        : [h("p", { class: "empty" }, ["Drag a part here to build it off the board."])]),
       ...section("Can't be placed yet", unplaceable.length, [h("ul", { class: "board-list unplaceable" }, unplaceable.map((text) => h("li", {}, [text])))]),
     );
     $("board-nets-count").textContent = progress.nets.length ? `· ${progress.nets_done}/${progress.nets.length}` : "";

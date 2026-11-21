@@ -1,8 +1,10 @@
-"""Fit the three Kingbright LEDs (D-156) and write their .lib and .json (validation is
-measured afterwards by add_model.py's update mode). Run from the repo root."""
+"""Fit the Kingbright 5 mm LEDs (D-156) and write their .lib and .json (validation is
+measured afterwards by add_model.py's update mode). Run from the repo root:
+`fit_leds.py [ID ...]` fits only those parts (a fitter rewrites the whole record)."""
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("fit_models", "scripts/fit_models.py")
@@ -77,6 +79,54 @@ QW = [
     (3.4556, 27.3074),
     (3.5053, 30.0193),
 ]
+# WP7113SURDK, Forward Current vs. Forward Voltage (page 3), read from the PDF's vector
+# drawing by tools/plots.py (plot 1, curve 2399); checked against the page's picture.
+SURD = [
+    (1.7, 0.5351),
+    (1.724, 0.7703),
+    (1.749, 1.304),
+    (1.798, 2.911),
+    (1.818, 3.98),
+    (1.837, 5.585),
+    (1.861, 7.993),
+    (1.876, 9.297),
+    (1.891, 10.91),
+    (1.906, 12.79),
+    (1.921, 15.2),
+    (1.946, 20.0),
+    (1.966, 24.77),
+    (1.986, 29.83),
+]
+# WP710A10SURDK (3 mm), the same figure on its page 3 (plot 1, curve 1871), checked
+# against the page's picture.
+SURD3 = [
+    (1.7, 0.5326),
+    (1.724, 0.7995),
+    (1.749, 1.333),
+    (1.798, 2.933),
+    (1.818, 4.0),
+    (1.837, 5.6),
+    (1.861, 7.967),
+    (1.876, 9.3),
+    (1.891, 10.91),
+    (1.906, 12.78),
+    (1.921, 15.17),
+    (1.946, 20.0),
+    (1.966, 24.78),
+    (1.986, 29.83),
+]
+
+
+def package(name: str, sheet: str) -> dict:
+    """The record's package: KiCad's pin numbers, the cathode by the sheet's drawing."""
+    return {
+        "name": name,
+        "pins": {"K": 1, "A": 2},
+        "source": f"{sheet}: {name} Solid State Lamp; pins numbered by KiCad's convention, "
+        "1 cathode, 2 anode: the sheet doesn't number the leads (the user, 2026-10-29, "
+        "D-159). The cathode is the short lead, by the flat on the rim",
+    }
+
 
 KB = "https://www.kingbrightusa.com/images/catalog/SPEC/"
 LIC = "Our own fit to the maker's datasheet curve (D-156): the values are Solum Builder's"
@@ -117,9 +167,41 @@ LEDS = [
         if_max=30e-3,
         ir=50e-6,
     ),
+    dict(
+        id="WP7113SURDK",
+        colour="red",
+        chem="AlGaInP hyper red",
+        pts=SURD,
+        url=KB + "WP7113SURDK.pdf",
+        sheet="Kingbright WP7113SURDK data sheet, Spec No DSAF1320, Rev. V.8A (03/26/2025)",
+        test=(20e-3, 1.95, 2.5),
+        cjo=None,
+        if_max=30e-3,
+        ir=10e-6,
+        retrieved="2026-11-21",
+        package=package("T-1 3/4 (5 mm)", "Kingbright WP7113SURDK data sheet"),
+    ),
+    dict(
+        id="WP710A10SURDK",
+        colour="red",
+        chem="AlGaInP hyper red",
+        size="3 mm",
+        pts=SURD3,
+        url=KB + "WP710A10SURDK.pdf",
+        sheet="Kingbright WP710A10SURDK data sheet, Spec No DSAN6992, Rev. V.6A (03/26/2025)",
+        test=(20e-3, 1.95, 2.5),
+        cjo=None,
+        if_max=30e-3,
+        ir=10e-6,
+        retrieved="2026-11-21",
+        package=package("T-1 (3 mm)", "Kingbright WP710A10SURDK data sheet"),
+    ),
 ]
+WANTED = set(sys.argv[1:])
 
 for led in LEDS:
+    if WANTED and led["id"] not in WANTED:
+        continue
     pts = [(v, ma / 1000) for v, ma in led["pts"] if ma >= 1.0]  # linear plot: below 1 mA is noise
     fitted, held = pts[0::2], pts[1::2]
     f = fm.fit_diode(fitted)
@@ -130,7 +212,8 @@ for led in LEDS:
     card = fm.diode_card(name, f, **extra)
     figure = "Forward Current vs. Forward Voltage (page 3), read from the PDF's vector drawing"
     desc = (
-        f"{led['colour'].capitalize()} 5 mm LED, {led['chem']} (our fit to Kingbright "
+        f"{led['colour'].capitalize()} {led.get('size', '5 mm')} LED, {led['chem']} "
+        f"(our fit to Kingbright "
         f"{led['id'].replace('-', '/')}'s sheet)"
     )
     folder = Path("library/models/led")
@@ -186,10 +269,11 @@ for led in LEDS:
         "manufacturer": "Kingbright",
         "source": {
             "url": led["url"],
-            "retrieved": "2026-10-29",
+            "retrieved": led.get("retrieved", "2026-10-29"),
             "licence": LIC,
             "original": "Solum Builder fit",
         },
+        "datasheet": led["url"],
         "fixes": [],
         "ratings": {"if_avg": led["if_max"], "vr_max": 5.0},
         "rating_sources": {
@@ -221,6 +305,7 @@ for led in LEDS:
             "equation's, not the "
             "sheet's",
         },
+        **({"package": led["package"]} if "package" in led else {}),
         "validation": validation,
     }
     (folder / f"{led['id']}.json").write_text(json.dumps(rec, indent=2, ensure_ascii=False) + "\n")
