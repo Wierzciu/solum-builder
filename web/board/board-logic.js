@@ -12,14 +12,22 @@
  * @typedef {{size: [number, number], parts?: Record<string, Record<string, string>>,
  *   standing?: string[], cuts?: string[], links?: string[][], wires?: WireData[],
  *   off?: Record<string, [number, number]>}} BoardData
- * @typedef {{from: string, hole?: string, lug?: string}} WireData an off-board wire (D-375):
+ * @typedef {{from: string, hole?: string, lug?: string, runs?: Array<[number, number]>}} WireData an off-board wire (D-375):
  *   from a lug to a hole, to another lug, or loose
  * @typedef {{shape: string, kind: string, legs: string[], steps: number[], flat: number,
  *   stand: number, length: number, width: number, diameter: number, row_holes: number,
- *   refs: string[]}} Footprint what `/api/stripboard` sends to draw a board part by
+ *   refs: string[], look?: Look}} Footprint what `/api/stripboard` sends to draw a board part by
+ * @typedef {{bands?: string[], minus?: string, cathode?: string, face?: boolean}} Look a part's
+ *   markings (footprints.py's `look`, D-378): a resistor's colour bands, the leg on an
+ *   electrolytic's − stripe, the cathode's leg (a diode's band), a TO-92's flat face
  * @typedef {{kind: "rect", x: number, y: number, w: number, h: number, angle: number, cx: number, cy: number}
  *   | {kind: "circle", cx: number, cy: number, r: number}
- *   | {kind: "lead", x1: number, y1: number, x2: number, y2: number}} Shape
+ *   | {kind: "lead", x1: number, y1: number, x2: number, y2: number}
+ *   | {kind: "band", x: number, y: number, w: number, h: number, angle: number, cx: number, cy: number, colour: string}
+ *   | {kind: "path", d: string, cx: number, cy: number, angle: number, cls: string}} Shape
+ *   `band`: a colour band or a diode's band across a body; `path`: drawn about (cx, cy)
+ *   turned by `angle`: a TO-92's body ("body"), an electrolytic's stripe ("stripe"), a
+ *   chip's notch ("notch") and pin-1 dot ("dot")
  */
 
 export const STEP = 10; // board units between holes
@@ -80,7 +88,7 @@ export function readBoard(data) {
     parts,
     cuts: holes(data?.cuts ?? []),
     links: (data?.links ?? []).map((pair) => holes(pair)).filter((pair) => pair.length === 2),
-    wires: (data?.wires ?? []).map((w) => ({ lug: w.from, hole: w.hole ? parseHole(w.hole) : null, to: w.lug ?? null })),
+    wires: (data?.wires ?? []).map((w) => ({ lug: w.from, hole: w.hole ? parseHole(w.hole) : null, to: w.lug ?? null, runs: w.runs ?? [] })),
     spots: /** @type {Record<string, Hole>} */ ({ ...(data?.off ?? {}) }),
   };
 }
@@ -145,10 +153,16 @@ export function sizeLine(board) {
   return `${board.columns} × ${board.strips} holes (${mm(board.columns)} × ${mm(board.strips)} mm), ${plural(board.cuts.length, "cut")}, ${plural(board.links.length, "link")}${wires}`;
 }
 
+const BAND_AT = [-0.3, -0.17, -0.04, 0.3]; // a 4-band code's bands along the body, from its first leg
+const round3 = (/** @type {number} */ n) => Math.round(n * 1000) / 1000;
+
 /**
  * The part's body and leads, in board units: a body (a rectangle along the legs' line, or
- * a circle) over the middle of its legs, a lead from each leg to it. A standing axial
- * part's body is a circle over its first leg, a lead down to the other.
+ * a circle) over the middle of its legs, a lead from each leg to it, and its markings
+ * (D-378): a resistor's colour bands, a diode's band at its cathode, an electrolytic's −
+ * stripe, a TO-92's D-shaped body (the flat face on the right of its legs' line, from the
+ * first leg: the package's pins 1 2 3 read from the face), a chip's notch and pin-1 dot. A
+ * standing axial part's body is a circle over its first leg, a lead down to the other.
  * @param {Footprint} fp @param {Array<[string, Hole]>} legs in the footprint's order
  * @param {boolean} standing @returns {Shape[]}
  */
@@ -161,18 +175,60 @@ export function partShapes(fp, legs, standing) {
     const r = Math.max(fp.width * MM, STEP * 0.6) / 2;
     return [...rest.map(([x, y]) => /** @type {Shape} */ ({ kind: "lead", x1: x, y1: y, x2: first[0], y2: first[1] })), { kind: "circle", cx: first[0], cy: first[1], r }];
   }
+  const look = fp.look ?? {};
+  const last = points[points.length - 1];
+  const legAngle = round3((Math.atan2(last[1] - points[0][1], last[0] - points[0][0]) * 180) / Math.PI);
+  /** Whether `leg` is the last leg (the far end of the legs' line). @param {string | undefined} leg */
+  const atEnd = (leg) => legs.findIndex(([name]) => name === leg) === legs.length - 1;
   const cx = points.reduce((s, p) => s + p[0], 0) / points.length;
   const cy = points.reduce((s, p) => s + p[1], 0) / points.length;
-  if (fp.diameter) return [...leadsTo([cx, cy]), { kind: "circle", cx, cy, r: (fp.diameter * MM) / 2 }];
+  if (fp.diameter) {
+    const r = (fp.diameter * MM) / 2;
+    /** @type {Shape[]} */
+    const shapes = [...leadsTo([cx, cy]), { kind: "circle", cx, cy, r }];
+    if (look.minus) {
+      const a = r * 0.45;
+      const b = Math.sqrt(r * r - a * a);
+      shapes.push({ kind: "path", d: `M${round3(a)},${round3(-b)} A${round3(r)},${round3(r)} 0 0 1 ${round3(a)},${round3(b)} Z`, cx, cy, angle: atEnd(look.minus) ? legAngle : legAngle + 180, cls: "stripe" });
+    }
+    return shapes;
+  }
   // along the legs' line: first to last leg; a DIP's along its row, pin 1 to the row's last
   const end = fp.shape === "dip" ? points[Math.max(0, points.length / 2 - 1)] : points[points.length - 1];
   const angle = (Math.atan2(end[1] - points[0][1], end[0] - points[0][0]) * 180) / Math.PI;
   const span = Math.hypot(end[0] - points[0][0], end[1] - points[0][1]);
   const length = fp.length ? fp.length * MM : span + STEP * 0.8;
   const width = Math.max(fp.width * MM, STEP * 0.5);
-  const body = /** @type {Shape} */ ({ kind: "rect", x: cx - length / 2, y: cy - width / 2, w: length, h: width, angle: Math.round(angle * 1000) / 1000, cx, cy });
-  // a DIP's legs sit under its body: no leads to draw
-  return fp.shape === "dip" ? [body] : [...leadsTo([cx, cy]), body];
+  const turned = round3(angle);
+  const body = /** @type {Shape} */ ({ kind: "rect", x: cx - length / 2, y: cy - width / 2, w: length, h: width, angle: turned, cx, cy });
+  if (fp.shape === "dip") { // its legs sit under its body: no leads; the notch at pin 1's end, a dot by pin 1
+    const n = width * 0.14;
+    const dx = points[0][0] - cx;
+    const dy = points[0][1] - cy;
+    const t = (-turned * Math.PI) / 180;
+    const [px, py] = [dx * Math.cos(t) - dy * Math.sin(t), dx * Math.sin(t) + dy * Math.cos(t)];
+    const dot = STEP * 0.12;
+    return [body,
+      { kind: "path", d: `M${round3(-length / 2)},${round3(-n)} A${round3(n)},${round3(n)} 0 0 1 ${round3(-length / 2)},${round3(n)}`, cx, cy, angle: turned, cls: "notch" },
+      { kind: "path", d: `M${round3(px * 0.75 - dot)},${round3(py * 0.55)} a${dot},${dot} 0 1 0 ${2 * dot},0 a${dot},${dot} 0 1 0 ${-2 * dot},0`, cx, cy, angle: turned, cls: "dot" }];
+  }
+  const leads = leadsTo([cx, cy]);
+  if (look.face) {
+    const h = width / 2;
+    const half = length / 2;
+    return [...leads, { kind: "path", d: `M${round3(-half)},${round3(h)} L${round3(half)},${round3(h)} A${round3(half)},${round3(2 * h)} 0 0 0 ${round3(-half)},${round3(h)} Z`, cx, cy, angle: turned, cls: "body" }];
+  }
+  /** A band across the body at `at` (a fraction of its length from the middle, toward the last leg). @param {number} at @param {string} colour @returns {Shape} */
+  const band = (at, colour) => {
+    const w = length * 0.08;
+    const along = at * length;
+    const rad = (turned * Math.PI) / 180;
+    const [bx, by] = [cx + along * Math.cos(rad), cy + along * Math.sin(rad)];
+    return { kind: "band", x: bx - w / 2, y: by - width / 2, w, h: width, angle: turned, cx: bx, cy: by, colour };
+  };
+  const marks = (look.bands ?? []).slice(0, BAND_AT.length).map((colour, i) => band(BAND_AT[i], colour));
+  if (look.cathode) marks.push(band(atEnd(look.cathode) ? 0.32 : -0.32, "cathode"));
+  return [...leads, body, ...marks];
 }
 
 /**
@@ -216,8 +272,9 @@ export function boardRefOf(footprints, ref) {
  *   unplaceable: string[], nets: NetProgress[],
  *   legs: Record<string, LegProgress[]>, faults: string[], stale: string[], warnings: string[],
  *   done: boolean, nets_done: number, footprints: Record<string, Footprint>, start_size: [number, number],
- *   shorted: Array<[number, number, number]>}} Progress
- *   what `/api/stripboard` answers (check.py's `Progress`, with the footprints)
+ *   shorted: Array<[number, number, number]>, rails?: Record<string, Array<[number, number, number]>>, guidance: Guidance}} Progress
+ *   what `/api/stripboard` answers (check.py's `Progress`, with the footprints and the
+ *   guidance, D-377)
  */
 
 const SHAPE_WORDS = /** @type {Record<string, string>} */ ({ axial: "axial", radial: "radial", inline: "in a line", dip: "DIP", sil: "SIL" });
@@ -300,7 +357,11 @@ export function offBoardRows(progress, board) {
 
 /**
  * @typedef {{x: number, y: number, w: number, h: number}} Box
- * @typedef {{end: string, label: string, x: number, y: number}} LugAt
+ * @typedef {{end: string, label: string, x: number, y: number, box?: Box}} LugAt `box`: its
+ *   part's body (to route a wire round it, D-379)
+ * @typedef {{x1: number, y1: number, x2: number, y2: number, loose: boolean, hole: boolean, box: Box | null, runs?: Array<[number, number]>}} WireLine
+ *   a wire's ends in board units; `hole`: its far end is in a hole; `box`: its lug's part's body;
+ *   `runs`: its route's middle runs moved by hand, [run number, where in holes] (D-380)
  */
 
 /**
@@ -326,7 +387,8 @@ export function lugPlaces(progress, board) {
   const at = {};
   for (const item of progress.items) {
     if (!isOut(item, board)) continue;
-    for (const lug of itemShape(item, board.spots[item.ref] ?? progress.spots[item.ref]).lugs) at[lug.end] = lug;
+    const { body, lugs } = itemShape(item, board.spots[item.ref] ?? progress.spots[item.ref]);
+    for (const lug of lugs) at[lug.end] = { ...lug, box: body };
   }
   return at;
 }
@@ -336,19 +398,360 @@ export const LOOSE_DROP = STEP * 1.6; // how far a loose wire hangs below its lu
 /**
  * A wire's line in board units: from its lug to its hole, to its other lug, or hanging
  * loose below its lug; null when its lug isn't drawn.
- * @param {{lug: string, hole: Hole | null, to: string | null}} wire @param {Record<string, LugAt>} lugs
- * @returns {{x1: number, y1: number, x2: number, y2: number, loose: boolean} | null}
+ * @param {{lug: string, hole: Hole | null, to: string | null, runs?: Array<[number, number]>}} wire @param {Record<string, LugAt>} lugs
+ * @returns {WireLine | null}
  */
 export function wireLine(wire, lugs) {
   const from = lugs[wire.lug];
   if (!from) return null;
+  const start = { x1: from.x, y1: from.y, box: from.box ?? null, runs: wire.runs ?? [] };
   if (wire.hole) {
     const [x2, y2] = holeXY(wire.hole);
-    return { x1: from.x, y1: from.y, x2, y2, loose: false };
+    return { ...start, x2, y2, loose: false, hole: true };
   }
   const to = wire.to ? lugs[wire.to] : null;
-  if (to) return { x1: from.x, y1: from.y, x2: to.x, y2: to.y, loose: false };
-  return { x1: from.x, y1: from.y, x2: from.x, y2: from.y + LOOSE_DROP, loose: true };
+  if (to) return { ...start, x2: to.x, y2: to.y, loose: false, hole: false };
+  return { ...start, x2: from.x, y2: from.y + LOOSE_DROP, loose: true, hole: false };
+}
+
+const CORNER = STEP * 0.25; // a bend's rounding
+export const HOP = STEP * 0.3; // a hop's radius, where a wire crosses another
+const GRID = STEP / 2; // wires run on a half-hole grid: on the board, along the gaps between holes
+const ON_BOARD = 3; // a step over the board costs this many beside it: wires keep to the board's side
+const BEND = 4; // a bend costs this many steps
+const CROSS = 6; // crossing another wire
+const ON_TOP = 200; // lying along another wire, or through its bend: only when there's no other way
+
+/**
+ * @typedef {{boxes: Box[], lines: Array<[number, number, number, number]>}} Obstacles what a
+ *   wire keeps off (D-379): parts' bodies (board parts and off-board parts) and the leads of
+ *   board parts, in board units
+ */
+
+/**
+ * What the wires keep off: each placed part's body and leads (`partShapes`), and each
+ * off-board part's body beside the board (`itemShape`).
+ * @param {Board} board @param {Record<string, Footprint>} footprints
+ * @param {Array<{item: OffItem, at: Hole}>} items @returns {Obstacles}
+ */
+export function wireObstacles(board, footprints, items) {
+  /** @type {Obstacles} */
+  const found = { boxes: items.map(({ item, at }) => itemShape(item, at).body), lines: [] };
+  for (const placed of board.parts) {
+    const fp = footprints[placed.ref];
+    if (!fp) continue;
+    const order = new Map(fp.legs.map((leg, i) => [leg, i]));
+    const legs = [...placed.legs].sort((a, b) => (order.get(a[0]) ?? 0) - (order.get(b[0]) ?? 0));
+    for (const s of partShapes(fp, legs, placed.standing)) {
+      if (s.kind === "lead") found.lines.push([s.x1, s.y1, s.x2, s.y2]);
+      else if (s.kind === "circle") found.boxes.push({ x: s.cx - s.r, y: s.cy - s.r, w: 2 * s.r, h: 2 * s.r });
+      else if (s.kind === "rect") found.boxes.push(turnedBox(s.cx, s.cy, s.w, s.h, s.angle));
+      else if (s.kind === "path" && s.cls === "body") found.boxes.push(turnedBox(s.cx, s.cy, fp.length * MM, Math.max(fp.width * MM, STEP * 0.5), s.angle));
+    }
+  }
+  return found;
+}
+
+/** The upright box round a w × h rectangle about (cx, cy) turned by `angle` degrees. @returns {Box} */
+function turnedBox(/** @type {number} */ cx, /** @type {number} */ cy, /** @type {number} */ w, /** @type {number} */ h, /** @type {number} */ angle) {
+  const t = (angle * Math.PI) / 180;
+  const [c, s] = [Math.abs(Math.cos(t)), Math.abs(Math.sin(t))];
+  const [bw, bh] = [w * c + h * s, w * s + h * c];
+  return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
+}
+
+/** @type {{key: string, routes: Array<Array<[number, number]> | null>} | null} */
+let routed = null; // the last routes, kept while only a dragged run changes (D-380)
+
+/**
+ * The off-board wires' routes, as points with square corners (D-379): each found by a
+ * search on a half-hole grid from its lug (leaving it downward) to its hole, or up into
+ * its other lug. Parts' bodies and leads are walls; over the board a wire keeps to the
+ * gaps between holes and each step costs more than beside it, so wires run round the
+ * board's side and come in near their hole; bends and crossings cost a little, lying
+ * along another wire a lot. Wires are routed in order, each keeping off those before it.
+ * Loose: its short drop. The wires with runs moved by hand (`runs`, D-380) are routed
+ * first, those runs put where they were moved, so the others keep off them. Drawing only: a wire is still lug + hole (D-375).
+ * @param {Array<WireLine | null>} lines @param {{columns: number, strips: number}} board
+ * @param {Obstacles} [obstacles] @returns {Array<Array<[number, number]> | null>}
+ */
+export function wireRoutes(lines, board, obstacles = { boxes: [], lines: [] }) {
+  const key = JSON.stringify([lines, board.columns, board.strips, obstacles]);
+  if (routed?.key !== key) routed = { key, routes: searchRoutes(lines, board, obstacles) };
+  return routed.routes.map((r) => r && r.map((p) => /** @type {[number, number]} */ ([...p])));
+}
+
+/** The routes `wireRoutes` gives (uncached). @param {Array<WireLine | null>} lines @param {{columns: number, strips: number}} board @param {Obstacles} obstacles */
+function searchRoutes(lines, board, obstacles) {
+  const half = STEP / 2;
+  const edge = { left: -half, right: board.columns * STEP - half, top: -half, bottom: board.strips * STEP - half };
+  const xs = [edge.left, edge.right, ...obstacles.boxes.flatMap((b) => [b.x, b.x + b.w])];
+  const ys = [edge.top, edge.bottom, ...obstacles.boxes.flatMap((b) => [b.y, b.y + b.h])];
+  for (const l of lines) if (l) xs.push(l.x1, l.x2), ys.push(l.y1, l.y2);
+  const pad = 4 * STEP;
+  const x0 = Math.floor((Math.min(...xs) - pad) / GRID) * GRID;
+  const y0 = Math.floor((Math.min(...ys) - pad) / GRID) * GRID;
+  const cols = Math.ceil((Math.max(...xs) + pad - x0) / GRID) + 1;
+  const rows = Math.ceil((Math.max(...ys) + pad - y0) / GRID) + 1;
+  const at = (/** @type {number} */ i, /** @type {number} */ j) => j * cols + i;
+  const xy = (/** @type {number} */ n) => /** @type {[number, number]} */ ([x0 + (n % cols) * GRID, y0 + Math.floor(n / cols) * GRID]);
+  const node = (/** @type {number} */ x, /** @type {number} */ y) => at(Math.round((x - x0) / GRID), Math.round((y - y0) / GRID));
+  // walls: bodies (a little round them), leads, the board's holes; the board's area dearer
+  const wall = new Uint8Array(cols * rows);
+  const dear = new Uint8Array(cols * rows);
+  for (let n = 0; n < cols * rows; n++) {
+    const [x, y] = xy(n);
+    const over = x >= edge.left && x <= edge.right && y >= edge.top && y <= edge.bottom;
+    dear[n] = over ? 1 : 0;
+    if (over && x % STEP === 0 && y % STEP === 0) wall[n] = 1; // a hole: only a wire's own end goes in
+    if (obstacles.boxes.some((b) => x > b.x - 1 && x < b.x + b.w + 1 && y > b.y - 1 && y < b.y + b.h + 1)) wall[n] = 1;
+    if (obstacles.lines.some(([ax, ay, bx, by]) => nearSegment(x, y, ax, ay, bx, by) < 1.5)) wall[n] = 1;
+  }
+  for (const l of lines) if (l) wall[node(l.x1, l.y1)] = 1; // every lug a wall but to its own wires
+  /** which way the wires before use each point: 1 level, 2 upright, 3 both (a bend or a crossing) */
+  const used = new Uint8Array(cols * rows);
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  // the wires moved by hand first, so the rest go round them (the user, 2026-11-20: they take precedence)
+  const order = lines.map((_, n) => n).sort((a, b) => Number(!lines[a]?.runs?.length) - Number(!lines[b]?.runs?.length));
+  /** @type {Array<Array<[number, number]> | null>} */
+  const found = lines.map(() => null);
+  for (const n of order) found[n] = routeOne(lines[n]);
+  return found;
+
+  /** One wire's route, its runs moved by hand put where they were moved, marked as taken. @param {WireLine | null} line */
+  function routeOne(line) {
+    if (!line) return null;
+    const { x1, y1, x2, y2 } = line;
+    if (line.loose) return /** @type {Array<[number, number]>} */ ([[x1, y1], [x2, y2]]);
+    const into = line.hole ? -1 : 3; // into another lug: from below
+    const path = search(node(x1, y1), node(x2, y2), into);
+    /** @type {Array<[number, number]>} */
+    let points = path ? path.map(xy) : [[x1, y1], [x1, y2], [x2, y2]]; // walled in: straight, as before
+    points[0] = [x1, y1];
+    points[points.length - 1] = [x2, y2];
+    points = tidy(points);
+    for (const [i, at] of line.runs ?? []) {
+      if (i >= 1 && i <= points.length - 3) shiftRun(points, i, at * STEP); // else the route has changed shape: not that run any more
+    }
+    for (let k = 1; k < points.length; k++) take(points[k - 1], points[k]);
+    return points;
+  }
+
+  /** Mark the grid points from a to b (a level or upright run) as taken that way. @param {[number, number]} a @param {[number, number]} b */
+  function take(a, b) {
+    const level = a[1] === b[1];
+    const steps = Math.round(Math.abs(level ? b[0] - a[0] : b[1] - a[1]) / GRID);
+    for (let k = 0; k <= steps; k++) {
+      const t = steps ? k / steps : 0;
+      const n = node(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
+      if (n >= 0 && n < used.length) used[n] |= level ? 1 : 2;
+    }
+  }
+
+  /**
+   * The cheapest path from `start` (leaving it downward) to `goal` (arriving upward when
+   * `into` is 3), as grid points; null when there's none.
+   * @param {number} start @param {number} goal @param {number} into
+   */
+  function search(start, goal, into) {
+    const [gi, gj] = [goal % cols, Math.floor(goal / cols)];
+    const cost = new Float64Array(cols * rows * 4).fill(Infinity);
+    const from = new Int32Array(cols * rows * 4).fill(-1);
+    const heap = new Heap();
+    const first = start + cols; // down from the lug
+    if (first >= cols * rows || wall[first]) return null;
+    cost[first * 4 + 2] = 1;
+    from[first * 4 + 2] = start * 4 + 2;
+    heap.push(first * 4 + 2, 1 + Math.abs(gi - (first % cols)) + Math.abs(gj - Math.floor(first / cols)));
+    while (heap.size) {
+      const s = heap.pop();
+      const [n, d] = [Math.floor(s / 4), s % 4];
+      if (n === goal) return walkBack(s, from, start);
+      const [i, j] = [n % cols, Math.floor(n / cols)];
+      for (let e = 0; e < 4; e++) {
+        const [di, dj] = DIRS[e];
+        const [ni, nj] = [i + di, j + dj];
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+        const m = at(ni, nj);
+        if (m === goal ? into >= 0 && e !== into : wall[m]) continue;
+        const level = e < 2 ? 1 : 2;
+        let step = dear[m] ? ON_BOARD : 1;
+        if (e !== d) step += BEND;
+        if (used[m] & level || (used[m] && e !== d)) step += ON_TOP;
+        else if (used[m]) step += CROSS;
+        const c = cost[s] + step;
+        const t = m * 4 + e;
+        if (c >= cost[t]) continue;
+        cost[t] = c;
+        from[t] = s;
+        heap.push(t, c + Math.abs(gi - ni) + Math.abs(gj - nj));
+      }
+    }
+    return null;
+  }
+}
+
+/** The grid points from the start to state `s`. @param {number} s @param {Int32Array} from @param {number} start */
+function walkBack(s, from, start) {
+  const path = [];
+  for (let t = s; ; t = from[t]) {
+    path.push(Math.floor(t / 4));
+    if (Math.floor(t / 4) === start) break;
+  }
+  return path.reverse();
+}
+
+/** How far (x, y) is from the segment a–b. */
+function nearSegment(/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ ax, /** @type {number} */ ay, /** @type {number} */ bx, /** @type {number} */ by) {
+  const [dx, dy] = [bx - ax, by - ay];
+  const t = dx || dy ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy))) : 0;
+  return Math.hypot(x - ax - t * dx, y - ay - t * dy);
+}
+
+/** A small binary heap of states by priority, for the route search. */
+class Heap {
+  constructor() {
+    /** @type {number[]} */ this.items = [];
+    /** @type {number[]} */ this.keys = [];
+  }
+  get size() { return this.items.length; }
+  /** @param {number} item @param {number} key */
+  push(item, key) {
+    const { items, keys } = this;
+    let i = items.length;
+    items.push(item);
+    keys.push(key);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (keys[p] <= key) break;
+      [items[i], items[p], keys[i], keys[p]] = [items[p], items[i], keys[p], keys[i]];
+      i = p;
+    }
+  }
+  /** @returns {number} */
+  pop() {
+    const { items, keys } = this;
+    const top = items[0];
+    const [item, key] = [/** @type {number} */ (items.pop()), /** @type {number} */ (keys.pop())];
+    if (items.length) {
+      items[0] = item;
+      keys[0] = key;
+      for (let i = 0; ;) {
+        const [l, r] = [2 * i + 1, 2 * i + 2];
+        let m = i;
+        if (l < items.length && keys[l] < keys[m]) m = l;
+        if (r < items.length && keys[r] < keys[m]) m = r;
+        if (m === i) break;
+        [items[i], items[m], keys[i], keys[m]] = [items[m], items[i], keys[m], keys[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+/** Run `i` of route `r` moved to `at` across its length (y for a level run, x for an upright). @param {Array<[number, number]>} r @param {number} i @param {number} at */
+function shiftRun(r, i, at) {
+  const k = r[i][1] === r[i + 1][1] ? 1 : 0;
+  r[i] = /** @type {[number, number]} */ (k ? [r[i][0], at] : [at, r[i][1]]);
+  r[i + 1] = /** @type {[number, number]} */ (k ? [r[i + 1][0], at] : [at, r[i + 1][1]]);
+}
+
+/**
+ * Where run `i` of a route goes when dragged to `point`, in holes (D-380): on the half-hole
+ * grid the router uses; over the board, the middle of a gap between holes, never over a
+ * row of them.
+ * @param {Array<[number, number]>} route @param {number} i @param {[number, number]} point
+ * @param {{columns: number, strips: number}} board @returns {number}
+ */
+export function runAt(route, i, point, board) {
+  const level = route[i][1] === route[i + 1][1];
+  const at = level ? point[1] : point[0];
+  const [lo, hi] = level ? [route[i][0], route[i + 1][0]].sort((a, b) => a - b) : [route[i][1], route[i + 1][1]].sort((a, b) => a - b);
+  const half = STEP / 2;
+  const [size, across] = level ? [board.strips, board.columns] : [board.columns, board.strips];
+  const over = hi > -half && lo < across * STEP - half && at > -half && at < size * STEP - half;
+  const snapped = over ? Math.floor(at / STEP) * STEP + half : Math.round(at / GRID) * GRID;
+  return snapped / STEP;
+}
+
+/** Points without repeats or a middle point on a straight run. @param {Array<[number, number]>} points */
+function tidy(points) {
+  /** @type {Array<[number, number]>} */
+  const out = [];
+  for (const p of points) {
+    const last = out[out.length - 1];
+    if (last && last[0] === p[0] && last[1] === p[1]) continue;
+    const before = out[out.length - 2];
+    if (before && last && ((before[0] === last[0] && last[0] === p[0]) || (before[1] === last[1] && last[1] === p[1]))) out.pop();
+    out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Where the wires cross: for each route, each hop as [segment index, x], always on the
+ * crossing's level run (so each crossing hops once), kept clear of the bends.
+ * @param {Array<Array<[number, number]> | null>} routes @returns {Array<Array<[number, number]>>}
+ */
+export function wireHops(routes) {
+  const clear = CORNER + HOP;
+  /** @type {Array<{route: number, x: number, y1: number, y2: number}>} */
+  const uprights = [];
+  routes.forEach((r, route) => r?.forEach((p, i) => {
+    const q = r[i + 1];
+    if (q && p[0] === q[0]) uprights.push({ route, x: p[0], y1: Math.min(p[1], q[1]), y2: Math.max(p[1], q[1]) });
+  }));
+  return routes.map((r, route) => {
+    /** @type {Array<[number, number]>} */
+    const hops = [];
+    r?.forEach((p, i) => {
+      const q = r[i + 1];
+      if (!q || p[1] !== q[1]) return;
+      const [lo, hi] = [Math.min(p[0], q[0]), Math.max(p[0], q[0])];
+      for (const u of uprights) {
+        if (u.route === route || u.x <= lo + clear || u.x >= hi - clear || p[1] <= u.y1 + clear || p[1] >= u.y2 - clear) continue;
+        hops.push([i, u.x]);
+      }
+    });
+    return hops;
+  });
+}
+
+/**
+ * An SVG path through a route's points: bends rounded, a half-circle bump up at each hop.
+ * @param {Array<[number, number]>} points @param {Array<[number, number]>} [hops] as `wireHops` gives
+ */
+export function routePath(points, hops = []) {
+  const n = (/** @type {number} */ v) => String(Math.round(v * 100) / 100);
+  const parts = [`M${n(points[0][0])},${n(points[0][1])}`];
+  for (let i = 1; i < points.length; i++) {
+    const [a, p, b] = [points[i - 1], points[i], points[i + 1]];
+    const dx = Math.sign(p[0] - a[0]);
+    for (const [, x] of hops.filter((h) => h[0] === i - 1).sort((h, g) => (h[1] - g[1]) * dx)) {
+      parts.push(`L${n(x - dx * HOP)},${n(p[1])}`, `A${n(HOP)},${n(HOP)} 0 0 ${dx > 0 ? 1 : 0} ${n(x + dx * HOP)},${n(p[1])}`);
+    }
+    if (!b) {
+      parts.push(`L${n(p[0])},${n(p[1])}`);
+      continue;
+    }
+    const r = Math.min(CORNER, Math.hypot(p[0] - a[0], p[1] - a[1]) / 2, Math.hypot(b[0] - p[0], b[1] - p[1]) / 2);
+    const into = [Math.sign(p[0] - a[0]), Math.sign(p[1] - a[1])];
+    const out = [Math.sign(b[0] - p[0]), Math.sign(b[1] - p[1])];
+    parts.push(`L${n(p[0] - into[0] * r)},${n(p[1] - into[1] * r)}`, `Q${n(p[0])},${n(p[1])} ${n(p[0] + out[0] * r)},${n(p[1] + out[1] * r)}`);
+  }
+  return parts.join(" ");
+}
+
+/** The point `d` along a route from its start (its end if the route is shorter). @param {Array<[number, number]>} points @param {number} d @returns {[number, number]} */
+export function pointAlong(points, d) {
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (d <= length && length) return [a[0] + ((b[0] - a[0]) * d) / length, a[1] + ((b[1] - a[1]) * d) / length];
+    d -= length;
+  }
+  return points[points.length - 1];
 }
 
 /**
@@ -368,10 +771,12 @@ export function spotFor(item, hole) {
  */
 export const BOARD_SETTINGS = /** @type {const} */ ([
   { key: "values", label: "Show values", on: true, acts: true, title: "Label each part with its value as well as its ref" },
-  { key: "next", label: "What to place next", on: true, acts: false, title: "Suggest the part to place next" },
+  { key: "next", label: "What to place next", on: true, acts: true, title: "Suggest the part to place next, at the top of the tray" },
   { key: "shorts", label: "Allow shorts while editing, shown red", on: true, acts: true, title: "Off: a move that makes a short is refused" },
   { key: "grow", label: "Auto-grow", on: true, acts: true, title: "The board grows to take in what's placed by its edge, and shrinks back. Off: it stays its size (the margin greyed); add or remove lines on the rulers" },
-  { key: "seeThrough", label: "See-through", on: false, acts: false, title: "The copper side faint under the parts" },
+  { key: "seeThrough", label: "See-through", on: false, acts: true, title: "The parts faint, so the copper and the cuts under them show" },
+  { key: "rats", label: "Ratsnest lines: all", on: true, acts: true, title: "The dashed lines between the pieces of each net still to join. Off: only the lines of the part selected or carried" },
+  { key: "rails", label: "Highlight rails", on: false, acts: true, title: "The supply's copper (V+, V-) rose, ground's grey" },
 ]);
 
 /** @typedef {Record<(typeof BOARD_SETTINGS)[number]["key"], boolean>} BoardSettings */
@@ -552,10 +957,10 @@ export function moveWords(move, pose) {
 export const legsData = (legs) => Object.fromEntries(legs);
 
 /**
- * The red copper of a short (`progress.shorted`: [strip, first column, last column] runs).
+ * Copper runs as rectangles ([strip, first column, last column]): a short's red copper (`progress.shorted`).
  * @param {Array<[number, number, number]>} runs
  */
-export function shortedRects(runs) {
+export function runRects(runs) {
   return runs.map(([strip, c0, c1]) => ({ x: (c0 - 0.5) * STEP, y: (strip - 0.5) * STEP, w: (c1 - c0 + 1) * STEP, h: STEP }));
 }
 
@@ -566,4 +971,94 @@ export function shortedRects(runs) {
  */
 export function linkFrom(from, to) {
   return to[1] === from[1] ? null : [from, [from[0], to[1]]];
+}
+
+/**
+ * @typedef {{net: string, a: Hole, b: Hole}} Strand a ratsnest line: two pieces of `net` not joined yet
+ * @typedef {{marks: Record<string, Array<[number, number, number]>>, ratsnest: Strand[], cuts: Hole[],
+ *   links: Array<[Hole, Hole]>, stuck: string[], next: {ref: string, why: string} | null}} Guidance
+ *   what `/api/stripboard` sends to guide the next step (guidance.py, D-377): each net's
+ *   free copper as runs, the ratsnest, the suggested cuts and links, a sentence per join no
+ *   suggested link makes (why, what to do), what to place next
+ */
+
+/**
+ * The holes marked for a part being carried: the free copper of each of its legs' nets,
+ * where that leg would join its net (none for a net not on the board yet).
+ * @param {Progress} progress @param {Guidance} guidance @param {string} ref @returns {Hole[]}
+ */
+export function markedHoles(progress, guidance, ref) {
+  const nets = new Set((progress.legs[ref] ?? []).map((l) => l.net).filter((n) => n !== null));
+  /** @type {Hole[]} */
+  const holes = [];
+  for (const net of nets) {
+    for (const [strip, c0, c1] of guidance.marks[/** @type {string} */ (net)] ?? []) {
+      for (let c = c0; c <= c1; c++) holes.push([c, strip]);
+    }
+  }
+  return holes;
+}
+
+/**
+ * A board part's leg as the builder reads it: a chip's "pin 3", a trimmer's "lug 2", a
+ * named leg as it is ("B", "K"), else "leg 1".
+ * @param {Footprint | undefined} fp @param {string} leg
+ */
+export function legLabel(fp, leg) {
+  if (!/^\d+$/.test(leg)) return leg;
+  if (fp?.shape === "dip" || fp?.shape === "sil") return `pin ${leg}`;
+  return fp?.kind === "trimmer" ? `lug ${leg}` : `leg ${leg}`;
+}
+
+/**
+ * @typedef {{to: string, words: string, state: "joined" | "apart" | "unplaced", lug: boolean}} NeedReach
+ *   a terminal a leg must reach; `lug`: an off-board lug (its "unplaced" is "not wired")
+ * @typedef {{leg: string, hole: string | null, net: string | null, reach: NeedReach[]}} Need
+ */
+
+/**
+ * A part's needs, leg by leg (spec, *Guidance as you edit*): each leg's hole and net, and
+ * the terminals it must reach: joined already, apart (placed or wired, not joined), or not
+ * placed or wired yet. `lugWords` names an off-board lug ("VR1 lug 2").
+ * @param {Progress} progress @param {string} ref @param {(end: string) => string} lugWords @returns {Need[]}
+ */
+export function legNeeds(progress, ref, lugWords) {
+  const fp = progress.footprints[ref];
+  const unwired = new Set(progress.wires_to_go);
+  return (progress.legs[ref] ?? []).map((l) => ({
+    leg: legLabel(fp, l.leg),
+    hole: l.hole,
+    net: l.net,
+    reach: l.reach.map((r) => {
+      const dot = r.to.lastIndexOf(".");
+      const other = dot > 0 ? r.to.slice(0, dot) : "";
+      const legs = progress.legs[other];
+      if (!legs) return { to: r.to, words: lugWords(r.to), state: r.joined ? "joined" : unwired.has(r.to) ? "unplaced" : "apart", lug: true };
+      const leg = r.to.slice(dot + 1);
+      const placed = legs.find((x) => x.leg === leg)?.hole;
+      return { to: r.to, words: `${other} ${legLabel(progress.footprints[other], leg)}`, state: r.joined ? "joined" : placed ? "apart" : "unplaced", lug: false };
+    }),
+  }));
+}
+
+/**
+ * The nets a board part's legs are on (to light their ratsnest lines).
+ * @param {Progress} progress @param {string} ref @returns {Set<string>}
+ */
+export function netsOf(progress, ref) {
+  return new Set((progress.legs[ref] ?? []).map((l) => l.net).filter((n) => n !== null));
+}
+
+/**
+ * The suggested cuts and links in words, for the button that makes them all: "Make the
+ * suggested cut and 2 links"; "" when there are none.
+ * @param {Guidance} guidance
+ */
+export function suggestionsLine(guidance) {
+  const cuts = guidance.cuts.length;
+  const links = guidance.links.length;
+  if (!cuts && !links) return "";
+  const said = (/** @type {number} */ n, /** @type {string} */ word) => (n === 1 ? `${word}` : `${n} ${word}s`);
+  const parts = [cuts ? said(cuts, "cut") : "", links ? said(links, "link") : ""].filter(Boolean);
+  return `Make the suggested ${parts.join(" and ")}`;
 }

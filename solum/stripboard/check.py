@@ -13,7 +13,7 @@ from typing import Literal
 
 from solum.circuit.connectivity import GROUND, Nets, connect
 from solum.circuit.parts import PIN_WORDS
-from solum.circuit.schema import POLARISED, Capacitor, Circuit, Switch
+from solum.circuit.schema import POLARISED, SUPPLY_SIGNS, Capacitor, Circuit, Switch
 from solum.export import built_where, is_status_led
 from solum.guides import FootprintTable
 from solum.models import ModelLibrary
@@ -105,7 +105,7 @@ class _Words:
         return f"{ref}'s leg at {at}"
 
 
-def _occupants(layout: Layout) -> tuple[dict[Hole, list[str]], list[str]]:
+def occupants(layout: Layout) -> tuple[dict[Hole, list[str]], list[str]]:
     """Who has a wire or leg in each hole, and the faults of where links and wires are."""
     used: dict[Hole, list[str]] = defaultdict(list)
     faults = []
@@ -151,7 +151,7 @@ def placement_faults(layout: Layout, board: dict[str, BoardPart],
             faults.append(f"{ref} goes off the board: put it beside the board and wire it.")
         else:
             faults.append(f"{ref} is on the board but not in the circuit.")
-    used, occupied = _occupants(layout)
+    used, occupied = occupants(layout)
     faults += occupied
     bodies: dict[Hole, list[str]] = defaultdict(list)
     flat: set[str] = set()
@@ -389,7 +389,7 @@ def _oriented(layout: Layout, board: dict[str, BoardPart], circuit: Circuit, net
 
 
 @dataclass
-class _Reading:
+class Reading:
     """A layout read against its circuit: what both checks start from."""
 
     nets: Nets
@@ -406,7 +406,7 @@ class _Reading:
 
 
 def read_layout(layout: Layout, circuit: Circuit, models: ModelLibrary,
-          table: FootprintTable) -> _Reading:  # fmt: skip
+          table: FootprintTable) -> Reading:  # fmt: skip
     nets = connect(circuit)
     board, unboardable = board_parts(circuit, models, table)
     off_board = {p.ref for p in circuit.parts if built_where(p) != "board"}
@@ -421,12 +421,12 @@ def read_layout(layout: Layout, circuit: Circuit, models: ModelLibrary,
     needed = {end for end, net in ends.items() if count[net] > 1}
     layout = _oriented(layout, board, circuit, nets, ends)
     groups = stripboard_nets(layout, board)
-    return _Reading(nets, board, unboardable, off_board, items, ends, needed, layout,
+    return Reading(nets, board, unboardable, off_board, items, ends, needed, layout,
                     _Words(circuit, board, layout), groups,
                     _expected(groups, ends, nets))  # fmt: skip
 
 
-def _wire_faults(r: _Reading) -> tuple[list[str], list[str], int]:
+def _wire_faults(r: Reading) -> tuple[list[str], list[str], int]:
     """Wires from or to a lug the circuit has no such lug for, or from a lug to itself;
     the needed lugs not wired to anything yet; how many wires are loose."""
     faults = []
@@ -442,7 +442,7 @@ def _wire_faults(r: _Reading) -> tuple[list[str], list[str], int]:
     return faults, unwired, loose
 
 
-def groups_by_net(r: _Reading) -> dict[int, dict[str, list[Terminal]]]:
+def groups_by_net(r: Reading) -> dict[int, dict[str, list[Terminal]]]:
     """Each joined group of the board → its terminals by the net the circuit wants."""
     found: dict[int, dict[str, list[Terminal]]] = defaultdict(lambda: defaultdict(list))
     for t in sorted(r.expected, key=_key):
@@ -533,7 +533,9 @@ class Progress:
     the tray, D-370); `nets` each net's progress; `legs` each board part's legs; `faults` what's
     wrong now (placement, pads, a part the wrong way round, a leg on another net's strip);
     `stale` parts no longer in the circuit (D-376: placed, beside the board, or wired to);
-    `warnings` the placement limits broken; `done` the full check passes."""
+    `warnings` the placement limits broken; `done` the full check passes; `shorted` the
+    copper carrying two nets (D-374); `rails` the copper carrying only a rail, V+, V- or
+    GND, by net, as runs (D-381)."""
 
     to_place: list[str]
     wires_to_go: list[str]
@@ -549,6 +551,7 @@ class Progress:
     warnings: list[str]
     done: bool
     shorted: list[tuple[int, int, int]] = field(default_factory=list)
+    rails: dict[str, list[tuple[int, int, int]]] = field(default_factory=dict)
 
     @property
     def nets_done(self) -> int:
@@ -580,7 +583,7 @@ def _terminal_id(t: Terminal, words: _Words) -> str:
     return f"{ref}.{leg}"
 
 
-def _wrong_way(r: _Reading, circuit: Circuit) -> list[str]:
+def _wrong_way(r: Reading, circuit: Circuit) -> list[str]:
     """Each polarised two-leg part placed each leg on the other's net."""
     kinds = {p.ref: p for p in circuit.parts}
     faults = []
@@ -606,7 +609,7 @@ def _wrong_way(r: _Reading, circuit: Circuit) -> list[str]:
     return faults
 
 
-def _misplaced(r: _Reading, wanted: dict[str, list[Terminal]], skip: set[str]) -> list[str]:
+def _misplaced(r: Reading, wanted: dict[str, list[Terminal]], skip: set[str]) -> list[str]:
     """Each placed leg on a strip that carries only other nets (a part rewired in the
     schematic since it was placed, or a leg a strip off), with where it should go: the
     terminals of its own net, the placed ones by hole. Parts in `skip` (already named the
@@ -641,7 +644,7 @@ def _listed(words: list[str]) -> str:
     return " and ".join([", ".join(words[:-1]), words[-1]] if len(words) > 1 else words)
 
 
-def _gone(r: _Reading, circuit: Circuit) -> list[str]:
+def _gone(r: Reading, circuit: Circuit) -> list[str]:
     """What the board holds of parts the circuit no longer has (D-376): placed board parts
     (one that can't be placed now is still the circuit's: the tray names it), off-board parts
     put beside it, the parts of lugs a wire still runs to."""
@@ -718,12 +721,26 @@ def progress(layout: Layout, circuit: Circuit, models: ModelLibrary,
     warnings = limit_warnings(r.layout, placement_limits(circuit, r.nets, r.board))
     done = check_layout(layout, circuit, models, table).ok
     mixed = {g for g, here in by_group.items() if len(here) > 1}
-    red = {hole for hole, g in joined_groups(r.layout)[0].items() if g in mixed}
+    copper = joined_groups(r.layout)[0]
+    red = {hole for hole, g in copper.items() if g in mixed}
     spots = {**default_spots(r.items, r.layout), **dict(r.layout.spots)}
     return Progress(sorted(r.board.keys() - placed), unwired, loose, r.items,
                     {i.ref: spots[i.ref] for i in r.items}, stock_bypass(circuit),
                     r.unboardable, nets, legs, faults, stale, warnings, done,
-                    runs(red))  # fmt: skip
+                    runs(red), _rails(by_group, copper))  # fmt: skip
+
+
+def _rails(by_group: dict[int, dict[str, list[Terminal]]],
+           copper: dict[Hole, int]) -> dict[str, list[tuple[int, int, int]]]:  # fmt: skip
+    """The copper carrying only a rail (V+, V-, GND), by net, as runs (D-381); copper that
+    also carries another net is a short's, not a rail's."""
+    rail = {g: next(iter(here)) for g, here in by_group.items()
+            if len(here) == 1 and next(iter(here)) in {GROUND, *SUPPLY_SIGNS}}  # fmt: skip
+    holes: dict[str, set[Hole]] = defaultdict(set)
+    for hole, g in copper.items():
+        if g in rail:
+            holes[rail[g]].add(hole)
+    return {net: runs(found) for net, found in sorted(holes.items())}
 
 
 def shorts(layout: Layout, circuit: Circuit, models: ModelLibrary,

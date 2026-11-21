@@ -308,6 +308,17 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 .board-size { position: absolute; left: 12px; bottom: 12px; margin: 0; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-2); pointer-events: none; }
 .board-size[hidden], .board-trim[hidden] { display: none; } /* Trim and Wire it for me */
 .board-trim { pointer-events: auto; margin-left: 8px; padding: 1px 8px; font: 12px var(--font-ui); }
+.board-needs { position: absolute; right: 12px; top: 12px; max-width: 300px; max-height: 45%; overflow-y: auto; margin: 0; padding: 6px 10px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--text-2); }
+.board-needs[hidden] { display: none; }
+.board-needs h3 { margin: 0 0 4px; font: 12px var(--font-mono); color: var(--text); }
+.board-needs ul { list-style: none; margin: 0; padding: 0; }
+.board-needs .need { margin: 3px 0; }
+.board-needs .leg { color: var(--text); }
+.board-needs .where, .board-needs .net { font-family: var(--font-mono); }
+.board-needs .unused { color: var(--text-3); }
+.board-needs .reach { padding-left: 12px; }
+.board-needs .state { color: var(--text-3); }
+.board-needs .reach-joined .state { color: var(--ok); }
 body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-show="board"] .panels { display: none; }
 /* the Tray: the palette's place in the Board view (D-371) */
 .board-tray { width: 232px; flex: none; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--border); padding: 6px 10px 16px; font-size: 13px; }
@@ -326,6 +337,8 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 .board-tray .board-list .shape { color: var(--text-3); }
 .board-tray .unplaceable li { color: var(--text-3); }
 .board-tray .done { color: var(--text-2); }
+.board-tray .board-next { margin: 4px 0 8px; padding: 4px 6px; border-left: 2px solid var(--accent); background: var(--surface-2); color: var(--text); cursor: pointer; }
+.board-tray .board-list li.next { background: var(--info-bg); color: var(--text); }
 /* a footprint's mark beside its row: axial a bar, radial a circle, in a line three legs, DIP a notched box */
 .board-tray .fp { display: inline-block; width: 14px; height: 8px; margin-right: 6px; vertical-align: middle; border: 1.5px solid var(--text-3); box-sizing: border-box; }
 .board-tray .fp-axial { height: 6px; border-radius: 2px; }
@@ -359,9 +372,13 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 #board .lug-ring { fill: var(--board-base); stroke: var(--brass); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 #board .lug:hover .lug-ring { stroke: var(--accent-hi); stroke-width: 2; }
 #board .lug-label { font: 2.6px var(--font-mono); fill: var(--text-2); pointer-events: none; }
-#board .off-wire .wire { stroke: var(--brass); stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+#board .off-wire .wire { fill: none; stroke: var(--brass); stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 #board .off-wire.loose .wire { stroke-dasharray: 3 2; }
-#board .off-wire line { pointer-events: none; } /* only its ends are picked up: a press on the line reaches the part under it */
+#board .off-wire path { pointer-events: none; }
+#board .off-wire .wire-run { stroke: transparent; stroke-width: 6; vector-effect: non-scaling-stroke; pointer-events: stroke; }
+#board .off-wire .wire-run.level { cursor: ns-resize; }
+#board .off-wire .wire-run.upright { cursor: ew-resize; }
+#board .ghost path.wire { fill: none; } /* only its ends are picked up: a press on the line reaches the part under it */
 #board .wire-end { fill: var(--brass); cursor: move; }
 #board .off-wire.loose .far-end { fill: var(--surface-2); stroke: var(--brass); stroke-width: 1; vector-effect: non-scaling-stroke; }
 #board .off-wire:hover .wire { stroke: var(--accent-hi); }
@@ -374,17 +391,46 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 #board .board-part.selected .body { stroke: var(--sch-selected); stroke-width: 2.5; }
 #board .board-part.selected .lead, #board .board-part.selected .leg { stroke: var(--sch-selected); fill: var(--sch-selected); }
 #board .board-part.stale .leg { fill: var(--error); }
+/* the realistic drawing (D-378): a resistor's beige body and colour bands, a diode's band, an
+   electrolytic's − stripe, a chip's notch and pin-1 dot; each leg named on hover */
+#board .kind-resistor .body { fill: var(--band-body); }
+#board .band { stroke: none; pointer-events: none; }
+#board .band-black { fill: var(--band-black); } #board .band-brown { fill: var(--band-brown); }
+#board .band-red { fill: var(--band-red); } #board .band-orange { fill: var(--band-orange); }
+#board .band-yellow { fill: var(--band-yellow); } #board .band-green { fill: var(--band-green); }
+#board .band-blue { fill: var(--band-blue); } #board .band-violet { fill: var(--band-violet); }
+#board .band-grey { fill: var(--band-grey); } #board .band-white { fill: var(--band-white); }
+#board .band-gold { fill: var(--band-gold); } #board .band-silver, #board .band-cathode { fill: var(--band-silver); }
+#board .stripe { fill: var(--band-silver); opacity: 0.8; pointer-events: none; }
+#board .notch { fill: none; stroke: var(--sch-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#board .dot { fill: var(--sch-line); }
+
+#board .leg-name { display: none; font: 2.6px var(--font-mono); fill: var(--accent-hi); pointer-events: none; }
+#board .board-part:hover .leg-name { display: inline; }
+/* see-through: the bodies faint, the copper and cuts under them showing */
+#board .see-through .board-part .body, #board .see-through .band, #board .see-through .stripe { fill-opacity: 0.4; } /* faint, not gone: the outline and label stay (the user, 2026-11-20) */
+/* the copper side (D-378), mirrored: strips, cuts ✕ and each solder joint; nothing on the parts side */
+#board .copper .board-parts .body, #board .copper .board-parts .lead, #board .copper .board-parts .band,
+#board .copper .board-parts .stripe, #board .copper .board-parts .notch, #board .copper .board-parts .dot,
+#board .copper .board-labels, #board .copper .leg-name, #board .copper .links .link, #board .copper .off-items,
+#board .copper .off-wire .wire, #board .copper .wire-run, #board .copper .lug-end, #board .copper .off-wire:not(.pad), #board .copper .guide { display: none; }
+#board .copper .strip { fill: color-mix(in srgb, var(--picked) 30%, transparent); }
+#board .copper .leg, #board .copper .link-end, #board .copper .far-end { fill: var(--silver); }
+.board-tools .board-flip { margin-left: 8px; border-radius: 4px; }
+.board-tools .board-see { margin-left: 4px; border-radius: 4px; }
 /* editing (D-374): the tools, a part carried, a link being laid, shorted copper */
 .board-tools { position: absolute; left: 12px; top: 12px; display: flex; gap: 0; }
 .board-tools[hidden] { display: none; }
 .board-tools button { padding: 3px 10px; font: 12px var(--font-ui); border-radius: 0; background: var(--surface-2); }
 .board-tools button:first-child { border-radius: 4px 0 0 4px; }
-.board-tools button:last-child { border-radius: 0 4px 4px 0; }
+.board-tools button[data-tool="links"] { border-radius: 0 4px 4px 0; }
 .board-tools button + button { margin-left: -1px; }
 .board-tools button[aria-pressed="true"] { background: var(--info-bg); color: var(--text); border-color: var(--accent); position: relative; }
 #board[data-tool="cuts"], #board[data-tool="links"] { cursor: crosshair; }
 #board.carrying { cursor: grabbing; }
 #board .strip.shorted { fill: var(--error); opacity: 0.45; }
+#board .strip.rail-supply { fill: var(--board-rail-supply); }
+#board .strip.rail-ground { fill: var(--board-rail-ground); }
 #board .ghost { pointer-events: none; opacity: 0.6; }
 #board .ghost .body { fill: var(--surface-2); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
 #board .ghost .lead { stroke: var(--accent); stroke-width: 1; }
@@ -392,11 +438,23 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 #board .ghost .link { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 2 1.5; }
 #board .ghost .aim { fill: none; stroke: var(--accent); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 #board .link-hit { stroke: transparent; stroke-width: 5; }
+/* guidance (D-377): the ratsnest, a carried part's marked holes, suggested cuts and links faded */
+#board .rat { stroke: var(--board-rat); stroke-width: 2; stroke-dasharray: 6 4; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+#board .rat-end { fill: var(--board-rat); stroke: none; }
+#board .rat.lit { stroke: var(--accent-hi); stroke-width: 3; }
+#board .rat-end.lit { fill: var(--accent-hi); stroke: none; }
+#board[data-rats="focus"] .rat:not(.lit) { display: none; } /* Ratsnest lines: all off: only the part in focus's */
+#board .ghost .mark { fill: none; stroke: var(--ok); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+#board .suggested { cursor: pointer; opacity: 0.4; }
+#board .suggested:hover { opacity: 0.9; }
+#board .suggested-link { stroke: var(--sch-line); stroke-width: 1.2; stroke-dasharray: 2 1.5; }
+#board .suggested-cut { stroke: var(--error); stroke-width: 1.5; vector-effect: non-scaling-stroke; fill: none; }
+#board .suggest-hit { fill: transparent; }
 #board[data-tool="links"] .board-link { cursor: pointer; }
 #board[data-tool="links"] .board-link:hover .link { stroke: var(--error); }
 .board-tray .board-list li.carriable { cursor: grab; touch-action: none; user-select: none; }
-#board .board-label { font: 3.2px var(--font-ui); fill: var(--text); pointer-events: none; paint-order: stroke; stroke: var(--surface-2); stroke-width: 0.8px; }
-#board .board-label .value { font-family: var(--font-mono); fill: var(--text-2); }
+#board .board-label { font: 600 3.2px var(--font-ui); fill: var(--text); pointer-events: none; paint-order: stroke; stroke: var(--surface-0); stroke-width: 1.5px; stroke-linejoin: round; } /* a thick dark edge: readable over colour bands and light bodies */
+#board .board-label .value { font-family: var(--font-mono); font-weight: 500; fill: var(--text); }
 #board .board-label.selected .ref { fill: var(--sch-selected); }
 .board-panels .board-progress { margin: 0 0 8px; color: var(--text); }
 .board-panels .board-list { list-style: none; margin: 0; padding: 0; }

@@ -20,6 +20,13 @@
  * board, or moved by its body; a wire is drawn by dragging from a lug to a hole, to
  * another lug, or let go away from the board (loose); either end of a wire is dragged to
  * move it; a wire's or an off-board part's right-click menu takes it off.
+ *
+ * Guidance (D-377, from the progress check's `guidance`): the holes where a carried part's
+ * legs would join their nets are marked; the ratsnest shows what each net still has to
+ * join, a selected or carried part's lit; the cuts and links the legs call for are drawn
+ * faded, a click makes one, *Make the suggested …* makes them all; the needs card names a
+ * carried or selected part's legs and what each must reach (`needs.js`); with *What to
+ * place next* on, the tray says which part is next and why.
  */
 
 import { postJson } from "../api.js";
@@ -30,7 +37,8 @@ import { Schematic } from "../schematic/render.js";
 import { latestOnly } from "../state.js";
 import { remember, remembered } from "../storage.js";
 import { boardCanvas } from "./canvas.js";
-import { BOARD_SETTINGS, boardRefOf, drawnBoard, firstPose, holeName, isOut, itemRefs, legsAt, legsData, lineChanges, linkFrom, lugPlaces, middleOf, moveWords, netWords, netsLine, offBoardRows, partsOnNet, posed, poseOf, readBoard, readSettings, shownHoles, sizeLine, spotFor, staleLine, trayGroups, trayRows, wireLine } from "./board-logic.js";
+import { needsCard } from "./needs.js";
+import { BOARD_SETTINGS, boardRefOf, drawnBoard, firstPose, holeName, isOut, itemRefs, legNeeds, legsAt, legsData, lineChanges, linkFrom, lugPlaces, markedHoles, runAt, middleOf, moveWords, netWords, netsLine, netsOf, offBoardRows, partsOnNet, posed, poseOf, readBoard, readSettings, shownHoles, sizeLine, spotFor, staleLine, suggestionsLine, trayGroups, trayRows, wireLine, wireObstacles, wireRoutes } from "./board-logic.js";
 
 /**
  * @typedef {import("../schematic/render.js").Selection} Selection
@@ -64,7 +72,7 @@ import { BOARD_SETTINGS, boardRefOf, drawnBoard, firstPose, holeName, isOut, ite
 
 const BUTTON_TITLE = "Lay out a stripboard for this circuit";
 const SETTINGS_KEY = "solum.board"; // the editor's settings, kept by the server (D-311)
-const HINT = "Drag a part from the tray onto the board: Space turns it, F flips it, S stands it up. C makes cuts, K lays links. Drag from a pot's or jack's lug to a hole to wire it; right-click for more.";
+const HINT = "Drag a part from the tray onto the board: Space turns it, F flips it, S stands it up. C makes cuts, K lays links. Drag from a pot's or jack's lug to a hole to wire it, a wire's middle to move it; right-click for more.";
 const POSE_MOVES = /** @type {PoseMove[]} */ (["turn", "flip", "stand", "longer", "shorter"]);
 const MOVE_KEYS = { turn: "Space", flip: "F", stand: "S", longer: "+", shorter: "−" };
 
@@ -81,6 +89,8 @@ export function boardView(host, app) {
   const sizeText = $("board-size-text");
   const trimButton = /** @type {HTMLButtonElement} */ ($("board-trim"));
   const wireButton = /** @type {HTMLButtonElement} */ ($("board-wire"));
+  const acceptButton = /** @type {HTMLButtonElement} */ ($("board-accept"));
+  const needs = needsCard($("board-needs"));
   const button = $("board-button");
   let active = false;
   let fitted = false;
@@ -113,9 +123,12 @@ export function boardView(host, app) {
   let pressedItem = null;
   /** @type {Wiring | null} */
   let wiring = null;
+  /** @type {{index: number, run: number, at: number | null} | null} a wire's middle run being dragged (D-380) */
+  let bending = null;
 
   const canvas = boardCanvas(svg, {
     onClick: (spot) => {
+      if (spot.suggest) return void acceptOne(spot.suggest);
       if (tool === "cuts") return void toggleCut(spot.hole);
       if (spot.ref) selectPart(spot.ref);
       else app.select(app.resting());
@@ -123,6 +136,11 @@ export function boardView(host, app) {
     onLine: (axis, line, x, y) => openMenu(x, y, lineChanges(axis, line).map((c) => ({ label: c.label, run: () => void resize(c.change, c.label, c.axis, c.at) }))),
     onPress: (spot) => {
       if (carry || carryItem) return true; // picked up from the tray: this press puts it down
+      if (spot.suggest) return false; // a click makes it
+      if (tool === "parts" && spot.wire?.end === "run") {
+        bending = { index: spot.wire.index, run: spot.wire.run, at: null };
+        return true;
+      }
       if (tool === "parts" && spot.wire) {
         const w = boardNow().wires[spot.wire.index];
         if (w) wiring = { lug: w.lug, index: spot.wire.index, end: spot.wire.end };
@@ -141,6 +159,7 @@ export function boardView(host, app) {
     },
     onDrag: (hole, point) => {
       aim = hole;
+      if (bending) return showBending(point);
       if (wiring) return showWiring(point);
       if (pressedItem && !carryItem) pickItem(pressedItem.ref, pressedItem.hole);
       if (carryItem) return showCarriedItem();
@@ -153,6 +172,7 @@ export function boardView(host, app) {
       pressedPart = null;
       const item = pressedItem;
       pressedItem = null;
+      if (bending) return void endBending(moved);
       if (wiring) return void endWiring(hole, moved, spot);
       if (carryItem) return void putItem(hole);
       if (item && !moved) return selectItem(item.ref);
@@ -181,7 +201,19 @@ export function boardView(host, app) {
   });
   trimButton.addEventListener("click", () => void resize("trim", "Trim the board"));
   wireButton.addEventListener("click", () => void wireForMe());
-  for (const b of tools.querySelectorAll("button")) b.addEventListener("click", () => {
+  acceptButton.addEventListener("click", () => void boardEdit({ kind: "suggested" }, acceptButton.textContent ?? "Make the suggested cuts and links"));
+  const seeButton = $("board-see");
+  seeButton.setAttribute("aria-pressed", String(settings.seeThrough));
+  seeButton.addEventListener("click", (e) => {
+    setSetting("seeThrough", !settings.seeThrough);
+    if (e.detail) seeButton.blur(); // clicked: the board's keys act again
+  });
+  const flipButton = $("board-flip");
+  flipButton.addEventListener("click", (e) => {
+    canvas.flip((copper) => flipButton.setAttribute("aria-pressed", String(copper)));
+    if (e.detail) flipButton.blur(); // clicked: the board's keys act again
+  });
+  for (const b of tools.querySelectorAll("button[data-tool]")) b.addEventListener("click", () => {
     setTool(/** @type {any} */ (b.getAttribute("data-tool")));
     b.blur(); // the board's keys act again
   });
@@ -202,7 +234,7 @@ export function boardView(host, app) {
   function setTool(which) {
     tool = which;
     drop();
-    for (const b of tools.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.getAttribute("data-tool") === which));
+    for (const b of tools.querySelectorAll("button[data-tool]")) b.setAttribute("aria-pressed", String(b.getAttribute("data-tool") === which));
     svg.dataset.tool = which;
     canvas.ghost(null);
   }
@@ -220,6 +252,7 @@ export function boardView(host, app) {
     const middle = middleOf(placed.legs);
     carry = { ref, from: "board", pose: poseOf(fp, placed.legs, placed.standing) ?? firstPose(fp), grab: [hole[0] - middle[0], hole[1] - middle[1]] };
     svg.classList.add("carrying");
+    focus();
   }
 
   /** Pick a part up from the tray, held by its middle. @param {string} ref */
@@ -230,6 +263,7 @@ export function boardView(host, app) {
     carry = { ref, from: "tray", pose: firstPose(fp), grab: [0, 0] };
     svg.classList.add("carrying");
     showCarried();
+    focus();
   }
 
   /** Where the carried part's legs would go with the pointer at `hole`. @param {Carried} c @param {Hole} hole */
@@ -240,8 +274,10 @@ export function boardView(host, app) {
 
   function showCarried() {
     const fp = carry && progress?.footprints[carry.ref];
-    if (!carry || !fp || !aim) return canvas.ghost(null);
-    canvas.ghost({ part: { fp, legs: carriedLegs(carry, aim), standing: carry.pose.standing } });
+    const guide = guidanceNow();
+    const marks = carry && progress && guide ? markedHoles(progress, guide, carry.ref) : [];
+    if (!carry || !fp || !aim) return canvas.ghost(marks.length ? { marks } : null);
+    canvas.ghost({ marks, part: { fp, legs: carriedLegs(carry, aim), standing: carry.pose.standing } });
   }
 
   /** Put the carried part down with the pointer at `hole`. @param {Hole} hole */
@@ -382,12 +418,48 @@ export function boardView(host, app) {
     await boardEdit({ kind: "rewire", index: w.index, ref: spot.lug, ...far }, `Move a wire to ${lugWords(spot.lug)}`);
   }
 
-  /** A wire's menu: take it off, or leave its end loose. @param {number} index @param {number} x @param {number} y */
+  /**
+   * The wires' routes as drawn, with wire `index`'s runs as `runs` when given (D-380).
+   * @param {number} [index] @param {Array<[number, number]>} [runs]
+   */
+  function routes(index = -1, runs = []) {
+    const { wires, items } = offBoard();
+    const lines = wires.map((w) => (w.index === index && w.line ? { ...w.line, runs } : w.line));
+    const all = wireRoutes(lines, boardNow(), wireObstacles(boardNow(), progress?.footprints ?? {}, items));
+    return { all, at: wires.findIndex((w) => w.index === index) };
+  }
+
+  /** Wire `index`'s run moved with the pointer, shown faint. @param {[number, number]} point */
+  function showBending(point) {
+    if (!bending) return;
+    const { index, run } = bending;
+    const kept = (boardNow().wires[index]?.runs ?? []).filter(([i]) => i !== run);
+    const now = routes(index, kept);
+    const route = now.all[now.at];
+    if (!route || run > route.length - 3) return;
+    bending.at = runAt(route, run, point, boardNow());
+    const moved = routes(index, [...kept, [run, bending.at]]);
+    canvas.ghost({ route: moved.all[moved.at] ?? undefined });
+  }
+
+  /** A run let go: kept where it was put, one undo step. @param {boolean} moved */
+  async function endBending(moved) {
+    const bent = bending;
+    bending = null;
+    canvas.ghost(null);
+    const wire = bent ? boardNow().wires[bent.index] : null;
+    if (!bent || !wire || !moved || bent.at === null) return;
+    const runs = [...(wire.runs ?? []).filter(([i]) => i !== bent.run), [bent.run, bent.at]];
+    await boardEdit({ kind: "route", index: bent.index, runs }, `Move the wire from ${lugWords(wire.lug)}`);
+  }
+
+  /** A wire's menu: route it for me again, leave its end loose, or take it off. @param {number} index @param {number} x @param {number} y */
   function wireMenu(index, x, y) {
     const wire = boardNow().wires[index];
     if (!wire) return;
     const words = lugWords(wire.lug);
     openMenu(x, y, [
+      ...(wire.runs?.length ? [{ label: "Route it for me", run: () => void boardEdit({ kind: "route", index, runs: [] }, `Route the wire from ${words} again`) }] : []),
       ...(wire.hole || wire.to ? [{ label: "Leave its end loose", run: () => void boardEdit({ kind: "rewire", index, ref: wire.lug }, `Loosen the wire from ${words}`) }] : []),
       { label: "Take the wire off", run: () => void boardEdit({ kind: "unwire", index }, `Take off the wire from ${words}`) },
     ]);
@@ -408,7 +480,7 @@ export function boardView(host, app) {
     const wires = board.wires.flatMap((wire, index) => {
       const line = wireLine(wire, lugs);
       const far = wire.hole ? holeName(wire.hole) : wire.to ? lugWords(wire.to) : "loose";
-      return line ? [{ index, line, title: `${lugWords(wire.lug)} to ${far}: drag either end to move it` }] : [];
+      return line ? [{ index, line, title: `${lugWords(wire.lug)} to ${far}: drag either end to move it`, pad: Boolean(wire.hole) }] : [];
     });
     return { items: shown.map((item) => ({ item, at: board.spots[item.ref] ?? progress?.spots[item.ref] ?? /** @type {Hole} */ ([0, 0]) })), wires };
   }
@@ -419,9 +491,43 @@ export function boardView(host, app) {
     carryItem = null;
     pressedItem = null;
     wiring = null;
+    bending = null;
     linkStart = null;
     svg.classList.remove("carrying");
     canvas.ghost(null);
+    focus();
+  }
+
+  /** The guidance for the circuit as it is now (null: not checked yet). */
+  function guidanceNow() {
+    return progress && checked === app.circuit() ? progress.guidance : null;
+  }
+
+  /** The board part the guidance is about: the one carried, else the one selected (placed or not). */
+  function focused() {
+    if (carry) return carry.ref;
+    const selection = app.selection();
+    if (!selection || selection.resting || !progress) return null;
+    const refs = selection.kind === "part" ? [selection.id] : selection.kind === "items" ? (selection.items?.parts ?? []) : [];
+    const on = [...new Set(refs.map((r) => boardRefOf(progress?.footprints ?? {}, r)))];
+    return on.length === 1 ? on[0] : null;
+  }
+
+  /** The needs card and the lit ratsnest follow the part carried or selected. */
+  function focus() {
+    const ref = focused();
+    if (!ref || !progress) {
+      needs.hide();
+      return canvas.lightNets(new Set());
+    }
+    needs.show(ref, legNeeds(progress, ref, lugWords));
+    canvas.lightNets(netsOf(progress, ref));
+  }
+
+  /** A suggested cut or link clicked: made, one undo step. @param {{kind: "cut" | "link", holes: Hole[]}} s */
+  function acceptOne(s) {
+    if (s.kind === "cut") return boardEdit({ kind: "cut", holes: s.holes }, `Cut at ${holeName(s.holes[0])}`);
+    return boardEdit({ kind: "link", holes: s.holes }, `Lay the link ${s.holes.map(holeName).join("–")}`);
   }
 
   /** The board part selected, when it's one placed part. */
@@ -576,11 +682,19 @@ export function boardView(host, app) {
     const board = readBoard(circuit?.stripboard);
     const started = Boolean(board.columns);
     const drawn = drawnBoard(board, progress?.start_size);
-    canvas.draw(drawn, progress?.footprints ?? {}, circuit, { fit: !fitted, values: settings.values, rulers: started, fixed: !settings.grow, shorted: checked === circuit ? progress?.shorted ?? [] : [], off: offBoard() });
+    const guide = guidanceNow();
+    svg.dataset.rats = settings.rats ? "all" : "focus";
+    canvas.draw(drawn, progress?.footprints ?? {}, circuit, {
+      fit: !fitted, values: settings.values, rulers: started, fixed: !settings.grow, shorted: checked === circuit ? progress?.shorted ?? [] : [], rails: settings.rails && checked === circuit ? progress?.rails ?? {} : {}, off: offBoard(), seeThrough: settings.seeThrough,
+      guide: guide ? { rats: guide.ratsnest, cuts: guide.cuts, links: guide.links } : undefined,
+    });
     fitted ||= Boolean(drawn.columns && progress); // an empty board's size and the off-board parts come with the first check
     sizeText.textContent = sizeLine(board);
     trimButton.hidden = !started;
     wireButton.hidden = !started || !progress || (!progress.wires_to_go.length && !progress.loose && progress.items.every((i) => isOut(i, board)));
+    const suggestions = guide ? suggestionsLine(guide) : "";
+    acceptButton.textContent = suggestions;
+    acceptButton.hidden = !suggestions;
     light(app.selection());
   }
 
@@ -652,7 +766,9 @@ export function boardView(host, app) {
     /** @param {string} title @param {number} count @param {HTMLElement[]} body */
     const section = (title, count, body) => (count ? [h("h3", {}, [title, " ", h("span", { class: "count" }, [String(count)])]), ...body] : []);
     $("board-tray-count").textContent = left ? `· ${left} left` : "";
+    const next = settings.next ? progress.guidance.next : null;
     $("board-tray-body").replaceChildren(
+      ...(next ? [nextNote(next)] : []),
       ...(on || unplaceable.length
         ? section("On the board", on, groups.flatMap((g) => [h("p", { class: "board-subhead" }, [g.title]), h("ul", { class: "board-list" }, g.rows.map(row))]))
         : [h("p", { class: "empty done" }, ["✓ Every part is on the board."])]),
@@ -668,7 +784,7 @@ export function boardView(host, app) {
         return row;
       })),
     );
-    const said = [...progress.faults, ...progress.warnings];
+    const said = [...progress.faults, ...progress.guidance.stuck, ...progress.warnings];
     const stale = staleLine(progress.stale);
     $("board-warnings-count").textContent = said.length + progress.stale.length ? `· ${said.length + progress.stale.length}` : "";
     $("board-warnings-body").replaceChildren(
@@ -678,6 +794,15 @@ export function boardView(host, app) {
         : stale ? [] : [h("p", { class: "empty" }, [progress.done ? "The board matches the circuit." : "Nothing wrong so far."])]),
     );
     fillSettings();
+    if (next) $("board-tray-body").querySelector(`.board-list li[data-ref="${CSS.escape(next.ref)}"]`)?.classList.add("next");
+  }
+
+  /** *What to place next* (D-377): the part and why; a click picks it up. @param {{ref: string, why: string}} next */
+  function nextNote(next) {
+    const note = h("p", { class: "board-next" }, [next.why]);
+    note.title = "Click to pick it up, then click the board where it goes";
+    note.addEventListener("click", () => pickFromTray(next.ref));
+    return note;
   }
 
   /**
@@ -692,17 +817,25 @@ export function boardView(host, app) {
     return h("div", { class: "board-stale" }, [h("span", {}, [text]), " ", clear]);
   }
 
+  /**
+   * A setting changed (its box, or See-through's button and T): remembered, the board drawn again.
+   * @param {keyof import("./board-logic.js").BoardSettings} key @param {boolean} on
+   */
+  function setSetting(key, on) {
+    settings = { ...settings, [key]: on };
+    remember(SETTINGS_KEY, settings);
+    seeButton.setAttribute("aria-pressed", String(settings.seeThrough));
+    draw();
+    fillPanes();
+  }
+
   /** Settings: the editor's settings, remembered per viewer; *Remove board* at the bottom once one is started. */
   function fillSettings() {
     const boxes = BOARD_SETTINGS.map((setting) => {
       const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", "data-setting": setting.key }));
       box.checked = settings[setting.key];
       box.disabled = !setting.acts;
-      box.addEventListener("change", () => {
-        settings = { ...settings, [setting.key]: box.checked };
-        remember(SETTINGS_KEY, settings);
-        draw();
-      });
+      box.addEventListener("change", () => setSetting(setting.key, box.checked));
       const label = h("label", { class: setting.acts ? "board-setting" : "board-setting later" }, [box, " ", setting.label]);
       label.title = setting.acts ? setting.title : `${setting.title}. Comes with placing parts.`;
       return label;
@@ -720,6 +853,7 @@ export function boardView(host, app) {
 
   /** Light the selection on the board, off-board parts too. @param {Selection | null} selection */
   function light(selection) {
+    focus();
     if (!selection || selection.resting || !progress) return canvas.light([]);
     const fps = progress.footprints;
     const items = progress.items;
@@ -745,6 +879,7 @@ export function boardView(host, app) {
         return true;
       }
       if (action === "parts" || action === "cuts" || action === "links") return setTool(action), true;
+      if (action === "seeThrough") return setSetting("seeThrough", !settings.seeThrough), true;
       if (action === "remove") {
         const ref = carry?.from === "board" ? carry.ref : selectedPlaced();
         if (!ref) return false;

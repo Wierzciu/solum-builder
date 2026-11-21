@@ -4,6 +4,7 @@ panes in the column, the selection lit on both drawings, the result panes back a
 Board button (D-370)."""
 
 import itertools
+import re
 from typing import Any
 
 import pytest
@@ -57,12 +58,18 @@ def test_the_board_view_shows_the_board_and_its_own_panes(page: Page, base_url: 
 
     # a part clicked on the board is selected on both drawings
     page.locator("#board .board-part[data-ref='Q1']").click()
-    expect(page.locator("#board .board-part[data-ref='Q1']")).to_have_class("board-part selected")
+    expect(page.locator("#board .board-part[data-ref='Q1']")).to_have_class(
+        re.compile(r"\bboard-part\b.*\bselected\b")
+    )
     expect(page.locator("#board-sheet .part[data-ref='Q1']")).to_have_class("part selected")
     # and one clicked on the small schematic lights on the board
     page.locator("#board-sheet .part[data-ref='R2']").click()
-    expect(page.locator("#board .board-part[data-ref='R2']")).to_have_class("board-part selected")
-    expect(page.locator("#board .board-part[data-ref='Q1']")).to_have_class("board-part")
+    expect(page.locator("#board .board-part[data-ref='R2']")).to_have_class(
+        re.compile(r"\bboard-part\b.*\bselected\b")
+    )
+    expect(page.locator("#board .board-part[data-ref='Q1']")).not_to_have_class(
+        re.compile(r"\bselected\b")
+    )
 
     # the schematic's keys don't act in the Board view: Delete leaves R2 in the circuit
     page.keyboard.press("Delete")
@@ -173,7 +180,6 @@ def test_show_values_is_a_setting_remembered(page: Page, base_url: str) -> None:
     page.locator("#board-settings > summary").click()
     box = page.locator("#board-settings-body input[data-setting='values']")
     expect(box).to_be_checked()
-    expect(page.locator("#board-settings-body input[data-setting='next']")).to_be_disabled()
     box.uncheck()
     expect(label.locator(".value")).to_have_count(0)
     expect(label.locator(".ref")).to_have_text("R1")
@@ -183,6 +189,42 @@ def test_show_values_is_a_setting_remembered(page: Page, base_url: str) -> None:
     expect(page.locator("#board-settings")).to_have_attribute("open", "")  # kept open too
     page.locator("#board-settings-body input[data-setting='values']").check()
     expect(page.locator("#board .board-label[data-ref='R1'] .value")).to_have_count(1)
+    page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
+
+
+def test_highlight_rails_tints_the_supply_and_ground_copper(page: Page, base_url: str) -> None:
+    """D-381: off by default; on, the Rangemaster's V- copper (its supply, PNP) and GND
+    copper are tinted, nothing else; off again, gone."""
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    rails = page.locator("#board .strip[data-rail]")
+    expect(rails).to_have_count(0)
+    page.locator("#board-settings > summary").click()
+    box = page.locator("#board-settings-body input[data-setting='rails']")
+    expect(box).not_to_be_checked()
+    box.check()
+    expect(page.locator("#board .strip.rail-supply[data-rail='V-']")).to_have_count(2)
+    expect(page.locator("#board .strip.rail-ground[data-rail='GND']")).to_have_count(2)
+    expect(rails).to_have_count(4)
+    box.uncheck()
+    expect(rails).to_have_count(0)
+    page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
+
+
+def test_see_through_from_its_button_or_t(page: Page, base_url: str) -> None:
+    """See-through (D-378) from the toolbar's button or T as well as Settings: the parts
+    faint, their outlines and labels kept; the button shows whether it's on."""
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    button = page.locator("#board-see")
+    expect(button).to_have_attribute("aria-pressed", "false")
+    button.click()
+    expect(page.locator("#board .board.see-through")).to_have_count(1)
+    expect(button).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#board .board-label[data-ref='R1']")).to_be_visible()
+    page.keyboard.press("t")
+    expect(page.locator("#board .board.see-through")).to_have_count(0)
+    expect(button).to_have_attribute("aria-pressed", "false")
     page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
 
 
@@ -386,6 +428,51 @@ def test_an_off_board_part_is_put_beside_the_board_and_wired(
     page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
 
 
+def test_a_wire_is_moved_by_its_middle_and_routed_for_me_again(page: Page, base_url: str) -> None:
+    """D-380: a wire's upright run dragged sideways stays where it's put (one undo step);
+    the wire's menu's Route it for me puts it back where the router draws it."""
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    wire = page.locator("#board .off-wire:has(.wire-run.upright)").first.get_attribute("data-wire")
+    run = f"#board .off-wire[data-wire='{wire}'] .wire-run.upright"
+
+    def middle() -> tuple[float, float]:
+        """A point on the run with nothing else on top (not where another wire crosses)."""
+        box = page.evaluate(
+            "(sel) => document.querySelector(sel).getBoundingClientRect().toJSON()", run
+        )
+        x = box["x"] + box["width"] / 2
+        for f in (0.25, 0.75, 0.1, 0.9, 0.5):
+            y = box["y"] + box["height"] * f
+            on = page.evaluate(
+                "([x, y, sel]) => document.elementFromPoint(x, y) === document.querySelector(sel)",
+                [x, y, run],
+            )
+            if on:
+                return x, y
+        raise AssertionError("the run is covered all along")
+
+    def wait_at(test: str, x: float) -> None:
+        page.wait_for_function(
+            f"""([sel, x]) => {{ const b = document.querySelector(sel)?.getBoundingClientRect();
+                 return b && ({test}); }}""",
+            arg=[run, x],
+        )
+
+    x, y = middle()
+    drag_to(page, (x, y), (x - 40, y))
+    wait_at("b.x + b.width / 2 < x - 20", x)
+    moved = middle()[0]
+    page.keyboard.press("Control+z")
+    wait_at("Math.abs(b.x + b.width / 2 - x) < 1", x)
+    page.keyboard.press("Control+Shift+z")
+    wait_at("Math.abs(b.x + b.width / 2 - x) < 1", moved)
+    page.mouse.click(*middle(), button="right")  # the run's hit line is see-through
+    page.get_by_role("menuitem", name="Route it for me").click()
+    wait_at("Math.abs(b.x + b.width / 2 - x) < 1", x)
+    page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
+
+
 def test_a_part_deleted_from_the_schematic_is_flagged_and_cleared(
     page: Page, base_url: str
 ) -> None:
@@ -430,7 +517,7 @@ def test_a_part_placed_finishes_its_nets_and_the_board_is_saved_as_it_was(
     # flipped: its legs swap strips, named as it's made
     # by its leg at H3, under a wire across the board: the wire doesn't take the click
     page.mouse.click(*hole_point(page, 7, 2))
-    expect(c3).to_have_class("board-part selected")
+    expect(c3).to_have_class(re.compile(r"\bboard-part\b.*\bselected\b"))
     page.keyboard.press("f")
     expect(warnings).to_contain_text("C3 is the wrong way round")
     page.keyboard.press("Control+z")
@@ -448,3 +535,119 @@ def test_a_part_placed_finishes_its_nets_and_the_board_is_saved_as_it_was(
     )
     expect(progress).to_have_text("All 8 nets done.")
     expect(warnings).to_have_text("The board matches the circuit.")
+
+
+def test_the_guidance_marks_suggests_and_says_what_is_next(page: Page, base_url: str) -> None:
+    """D-377: the Rangemaster without R3, its cut and links: the tray says R3 is next; the
+    ratsnest and the faded cut and links show; a suggested cut clicked is made (an undo
+    step), the rest made with one button; a selected part's needs leg by leg; a part
+    carried from the tray marks the holes where its legs would join their nets."""
+    board = load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml")
+    del board["parts"]["R3"]
+    board["standing"], board["cuts"], board["links"] = [], [], []
+    open_with_board(page, base_url, board)
+    show_board(page)
+    expect(page.locator("#board-tray-body .board-next")).to_contain_text("Next: R3.")
+    expect(page.locator("#board-tray-body li[data-ref='R3']")).to_have_class(re.compile("next"))
+    accept = page.locator("#board-accept")
+    expect(accept).to_have_text("Make the suggested cut and 2 links")
+    suggested = page.locator("#board .suggested")
+    expect(suggested).to_have_count(3)
+    expect(page.locator("#board .rat")).not_to_have_count(0)
+    # one suggested cut clicked: made, one undo step
+    page.locator("#board .suggested[data-suggest='cut']").click()
+    expect(page.locator("#board .cut")).to_have_count(1)
+    expect(accept).to_have_text("Make the suggested 2 links")
+    page.keyboard.press("Control+z")
+    expect(page.locator("#board .cut")).to_have_count(0)
+    # all of them with the button
+    accept.click()
+    expect(page.locator("#board .cut")).to_have_count(1)
+    expect(page.locator("#board .link")).to_have_count(2)
+    expect(suggested).to_have_count(0)
+    expect(accept).to_be_hidden()
+    expect(page.locator("#board .rat")).to_have_count(0)
+    # Q1 selected: its needs, leg by leg (its emitter still needs R3)
+    page.locator("#board .board-part[data-ref='Q1']").click()
+    needs = page.locator("#board-needs")
+    expect(needs).to_be_visible()
+    expect(needs.locator("li.need").first).to_contain_text("E")
+    expect(needs).to_contain_text("R3 leg 1 not placed yet")
+    expect(needs).to_contain_text("✓")
+    # R3 picked up from the tray: the holes its legs would join are marked
+    page.locator("#board-tray-body .board-next").click()
+    page.mouse.move(*hole_point(page, 6, 4))
+    expect(page.locator("#board .ghost .mark")).not_to_have_count(0)
+    page.keyboard.press("Escape")
+    expect(page.locator("#board .ghost .mark")).to_have_count(0)
+
+
+def test_the_realistic_drawing_see_through_and_the_copper_side(page: Page, base_url: str) -> None:
+    """D-378: R1's colour bands and C3's stripe drawn, each leg named; See-through makes the
+    bodies faint; Copper side turns the board over, mirrored, and a cut clicked there is the
+    cut under it (G8), mended."""
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    expect(page.locator("#board .board-part[data-ref='R1'] .band")).to_have_count(4)
+    expect(page.locator("#board .board-part[data-ref='C3'] .stripe")).to_have_count(1)
+    expect(page.locator("#board .board-part[data-ref='Q1'] .leg-name")).to_have_text(
+        ["E", "B", "C"]
+    )
+    page.locator("#board-settings > summary").click()
+    page.locator("#board-settings-body input[data-setting='seeThrough']").check()
+    expect(page.locator("#board g.board.see-through")).to_have_count(1)
+    page.locator("#board-flip").click()
+    expect(page.locator("#board-flip")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#board g.board.copper")).to_have_count(1)
+    expect(page.locator("#board .board-label").first).to_be_hidden()
+    page.keyboard.press("c")
+    page.locator("#board .cut").click()
+    expect(page.locator("#board .cut")).to_have_count(0)
+    page.keyboard.press("Control+z")
+    page.locator("#board-flip").click()
+    expect(page.locator("#board-flip")).to_have_attribute("aria-pressed", "false")
+    expect(page.locator("#board g.board.copper")).to_have_count(0)
+
+
+def test_a_join_no_link_can_make_is_explained_in_warnings(page: Page, base_url: str) -> None:
+    """The base at C4 and J4 on one strip, C2's leg between them (D-377): Warnings says why
+    no link can join them and what to move."""
+    board = {"size": [12, 9], "cuts": ["D4", "G4", "D8"],
+             "parts": {"R1": {"1": "C8", "2": "C4"}, "R2": {"1": "J4", "2": "J8"},
+                       "C2": {"1": "F4", "2": "F6"}}}  # fmt: skip
+    open_with_board(page, base_url, board)
+    show_board(page)
+    warning = page.locator("#board-warnings-body li.warning")
+    expect(warning).to_contain_text("a link only joins one strip to another")
+    expect(warning).to_contain_text("Move C2 off strip 4")
+
+
+def test_ratsnest_lines_all_or_only_the_part_in_focus(page: Page, base_url: str) -> None:
+    """*Ratsnest lines: all* (D-377): on, every strand shows; off, none until a part is
+    selected, then that part's nets' strands, lit."""
+    board = {"size": [12, 9], "cuts": ["D4", "G4", "D8"],
+             "parts": {"R1": {"1": "C8", "2": "C4"}, "R2": {"1": "J4", "2": "J8"},
+                       "C2": {"1": "F4", "2": "F6"}}}  # fmt: skip
+    open_with_board(page, base_url, board)
+    show_board(page)
+    line = page.locator("#board line.rat[data-net='Q1.B']")
+    found = "document.querySelector(\"#board line.rat[data-net='Q1.B']\")"
+
+    def showing(yes: bool) -> None:  # a level line has no height: Playwright calls it hidden
+        page.wait_for_function(
+            f"(l => l && (getComputedStyle(l).display {'!' if yes else '='}== 'none'))({found})"
+        )
+
+    showing(True)
+    page.locator("#board-settings > summary").click()
+    box = page.locator("#board-settings-body input[data-setting='rats']")
+    expect(box).to_be_checked()
+    box.uncheck()
+    showing(False)
+    page.locator("#board .board-part[data-ref='R1']").click()
+    showing(True)
+    expect(line).to_have_class(re.compile(r"\blit\b"))
+    page.mouse.click(*hole_point(page, 10, 1))  # an empty hole: nothing selected
+    showing(False)
+    box.check()
+    showing(True)

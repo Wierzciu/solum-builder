@@ -6,6 +6,7 @@ solum/circuit/parts.py (the one owner of pin geometry).
 """
 
 import json
+from itertools import pairwise
 from typing import Any
 
 import pytest
@@ -1026,7 +1027,7 @@ def test_the_board_tray_and_settings(js: Page) -> None:
     assert got["groups"] == [["Resistors", ["R1"]], ["Chips", ["IC1"]]]
     assert got["wires"] == "1 of 3 placed; a wire from VR1 lug 2"
     assert got["none"] == {"values": True, "next": True, "shorts": True, "grow": True,
-                           "seeThrough": False}  # fmt: skip
+                           "seeThrough": False, "rats": True, "rails": False}  # fmt: skip
     assert got["some"] == {**got["none"], "values": False}  # a garbled one at its default
 
 
@@ -1094,7 +1095,7 @@ def test_a_carried_part_turns_flips_stands_and_lands_by_its_middle(js: Page) -> 
           chipFlip: b.posed(ic, b.firstPose(ic), 'flip'),
           link: b.linkFrom([3, 1], [6, 5]),
           noLink: b.linkFrom([3, 1], [6, 1]),
-          red: b.shortedRects([[7, 0, 11]]),
+          red: b.runRects([[7, 0, 11]]),
           keys: [' ', 'f', 's', '+', '-', 'Delete', 'c', 'k', 'p', 'Escape', 'r'].map((key) => k.boardActionFor({ key })?.action ?? null),
           ctrl: k.boardActionFor({ key: 'z', ctrl: true }),
         };
@@ -1154,7 +1155,10 @@ def test_off_board_parts_lugs_and_wires_are_drawn_where_they_sit(js: Page) -> No
     ]
     assert got["lugs"] == ["VR1.1", "VR1.2", "VR1.3", "IN.out", "IN.S"]
     hole, lug, loose = got["wires"]
-    assert hole == {"x1": 10, "y1": -50, "x2": 10, "y2": 10, "loose": False}
+    assert {k: hole[k] for k in ("x1", "y1", "x2", "y2", "loose", "hole")} == {
+        "x1": 10, "y1": -50, "x2": 10, "y2": 10, "loose": False, "hole": True,
+    }  # fmt: skip
+    assert hole["box"] == got["shape"]["body"]
     assert (lug["x2"], lug["y2"], lug["loose"]) == (110, 20, False)  # IN at its default spot
     assert loose["loose"] is True and loose["y2"] > loose["y1"]
     assert got["spot"] == [7, -6]
@@ -1162,6 +1166,93 @@ def test_off_board_parts_lugs_and_wires_are_drawn_where_they_sit(js: Page) -> No
     assert got["refs"] == [["VR1"], []]
     assert got["line"] == "1 of 2 nets done; 1 lug to wire, 1 loose."
     assert got["done"] == "All 1 nets done."
+
+
+def test_off_board_wires_are_routed_round_the_parts_and_hop_where_they_cross(js: Page) -> None:
+    """D-379: each wire leaves its lug downward and reaches its hole in square runs on the
+    half-hole grid, never through a part's body (a board part's or an off-board part's),
+    going round the board's side rather than across it; two wires never lie along each
+    other; lug to lug ends coming up into the other lug; a crossing hops on its level run.
+    D-380: a run moved by hand stays where it was put; a dragged run snaps to a gap's
+    middle over the board, to the half-hole grid beside it."""
+    got = run(
+        js,
+        """
+        const b = await m('board/board-logic.js');
+        const board = { columns: 10, strips: 8 };
+        const jack = { x: -75, y: 0, w: 50, h: 20 };
+        const wall = { x: 12, y: 18, w: 16, h: 24 };  // a part's body over D3–C4
+        const obstacles = { boxes: [jack, wall], lines: [] };
+        const left = { x1: -60, y1: 25, x2: 30, y2: 30, loose: false, hole: true, box: jack };
+        const left2 = { x1: -40, y1: 25, x2: 0, y2: 60, loose: false, hole: true, box: jack };
+        const lugs = { x1: -60, y1: 25, x2: -40, y2: 25, loose: false, hole: false, box: jack };
+        const routes = b.wireRoutes([left, left2, lugs, null], board, obstacles);
+        const moved = b.wireRoutes([{ ...left, runs: [[1, 4.5], [9, 1]] }, left2, lugs, null], board, obstacles)[0];
+        const cross = b.wireHops([[[0, 0], [100, 0]], [[50, -40], [50, 40]]]);
+        // a wire's level middle run moved by hand onto left's level run: left goes elsewhere
+        const level = (r) => r.findIndex((p, i) => i >= 1 && i <= r.length - 3 && p[1] === r[i + 1][1]);
+        const far = { x1: -40, y1: 25, x2: 80, y2: 30, loose: false, hole: true, box: jack };
+        const k = level(b.wireRoutes([left, far], board, obstacles)[1]);
+        const onto = routes[0][level(routes[0])][1];
+        const yielded = b.wireRoutes([left, { ...far, runs: [[k, onto / 10]] }], board, obstacles);
+        return {
+          routes, moved, cross, yielded, k, onto,
+          snaps: [b.runAt([[0, 0], [0, 30], [90, 30], [90, 40]], 1, [0, 47], board), b.runAt([[-60, 0], [-60, 10], [-23, 10], [-23, 40]], 2, [-23.4, 0], board)],
+          path: b.routePath([[0, 0], [100, 0], [100, 50]], cross[0]),
+          along: b.pointAlong([[0, 0], [10, 0], [10, 10]], 15),
+        };
+        """,
+    )
+    left, left2, lugs, missing = got["routes"]
+    assert missing is None
+
+    def runs(route: list[list[float]]) -> list[tuple[list[float], list[float]]]:
+        return list(pairwise(route))
+
+    def inside(x: float, y: float, b: dict[str, float]) -> bool:
+        return b["x"] < x < b["x"] + b["w"] and b["y"] < y < b["y"] + b["h"]
+
+    jack = {"x": -75, "y": 0, "w": 50, "h": 20}
+    wall = {"x": 12, "y": 18, "w": 16, "h": 24}
+    for route, end in ((left, [30, 30]), (left2, [0, 60])):
+        assert route[0] == [-60 if route is left else -40, 25] and route[-1] == end
+        assert route[1][0] == route[0][0] and route[1][1] > route[0][1]  # down from the lug
+        for a, b in runs(route):
+            assert a[0] == b[0] or a[1] == b[1]  # square
+            for t in (k / 20 for k in range(21)):
+                x, y = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+                assert not inside(x, y, jack) and not inside(x, y, wall)
+    # beside the board it runs on the half-hole grid; over it, in the gaps between holes
+    for a, _b in runs(left)[1:-1]:
+        assert a[0] % 5 == 0 and a[1] % 5 == 0
+    # no two runs along each other
+    for a, b in runs(left):
+        for c, d in runs(left2):
+            if a[1] == b[1] == c[1] == d[1]:
+                overlap = min(max(a[0], b[0]), max(c[0], d[0])) - max(
+                    min(a[0], b[0]), min(c[0], d[0])
+                )
+                assert overlap <= 0
+    assert lugs[0] == [-60, 25] and lugs[-1] == [-40, 25]
+    assert lugs[-2][0] == -40 and lugs[-2][1] > 25  # up into the other lug
+    assert (
+        got["moved"][1][1] == 45 and got["moved"][2][1] == 45
+    )  # run 1 put at 4.5 holes; run 9 ignored
+    # a wire moved by hand takes precedence: the automatic one keeps off its moved run
+    mine = got["yielded"][1]
+    k, onto = got["k"], got["onto"]
+    assert k >= 1 and mine[k][1] == mine[k + 1][1] == onto
+    lo, hi = sorted((mine[k][0], mine[k + 1][0]))
+    for a, b in runs(got["yielded"][0]):
+        if a[1] == b[1] == onto:
+            assert min(hi, max(a[0], b[0])) - max(lo, min(a[0], b[0])) <= 0
+    assert got["snaps"] == [
+        4.5,
+        -2.5,
+    ]  # a gap's middle over the board; the half-hole grid beside it
+    assert got["cross"] == [[[0, 50]], []]  # the level run hops, the upright doesn't
+    assert "A3,3 0 0 1 53,0" in got["path"] and "Q100,0" in got["path"]
+    assert got["along"] == [10, 5]
 
 
 def test_parts_gone_from_the_circuit_are_said_in_one_sentence(js: Page) -> None:
@@ -1178,3 +1269,33 @@ def test_parts_gone_from_the_circuit_are_said_in_one_sentence(js: Page) -> None:
         "R7 is no longer in the circuit.",
         "R7, R9 and VR9 are no longer in the circuit.",
     ]
+
+
+def test_a_board_part_is_drawn_with_its_markings(js: Page) -> None:
+    """D-378: a resistor's colour bands from its first leg, a diode's band at the cathode, an
+    electrolytic's stripe, a TO-92's D-shaped body, a chip's notch and pin-1 dot."""
+    got = run(
+        js,
+        """
+        const b = await m('board/board-logic.js');
+        const axial = { shape: 'axial', kind: 'resistor', legs: ['1', '2'], steps: [], flat: 4, stand: 1, length: 6.3, width: 2.5, diameter: 0, row_holes: 0, refs: ['R1'] };
+        const legs = [['1', [0, 0]], ['2', [4, 0]]];
+        const kinds = (shapes) => shapes.map((s) => s.kind === 'band' ? s.colour : s.kind === 'path' ? s.cls : s.kind);
+        const resistor = b.partShapes({ ...axial, look: { bands: ['yellow', 'violet', 'red', 'gold'] } }, legs, false);
+        const diode = b.partShapes({ ...axial, kind: 'diode', look: { cathode: '2' } }, legs, false);
+        const cap = b.partShapes({ ...axial, shape: 'radial', diameter: 5, look: { minus: '2' } }, [['1', [0, 0]], ['2', [0, 1]]], false);
+        const to92 = b.partShapes({ ...axial, shape: 'inline', length: 4.6, width: 4.2, look: { face: true } }, [['E', [0, 0]], ['B', [1, 0]], ['C', [2, 0]]], false);
+        const chip = b.partShapes({ ...axial, shape: 'dip', kind: 'chip', length: 0, width: 6.4, legs: ['1','2','3','4','5','6','7','8'] },
+          [['1', [0, 0]], ['2', [0, 1]], ['3', [0, 2]], ['4', [0, 3]], ['5', [3, 3]], ['6', [3, 2]], ['7', [3, 1]], ['8', [3, 0]]], false);
+        const firstBand = resistor.find((s) => s.kind === 'band');
+        return { resistor: kinds(resistor), firstBandX: firstBand.cx, diode: kinds(diode), diodeBandX: diode.find((s) => s.kind === 'band').cx,
+                 cap: kinds(cap), capAngle: cap.find((s) => s.kind === 'path').angle, to92: kinds(to92), chip: kinds(chip),
+                 label: b.legLabel({ ...axial, shape: 'dip' }, '3') };
+        """,
+    )
+    assert got["resistor"] == ["lead", "lead", "rect", "yellow", "violet", "red", "gold"]
+    assert got["firstBandX"] < 20  # the first band toward the first leg (x 0), the middle is 20
+    assert got["diode"] == ["lead", "lead", "rect", "cathode"] and got["diodeBandX"] > 20
+    assert got["cap"] == ["lead", "lead", "circle", "stripe"] and got["capAngle"] == 90
+    assert got["to92"] == ["lead", "lead", "lead", "body"]
+    assert got["chip"] == ["rect", "notch", "dot"] and got["label"] == "pin 3"

@@ -2,19 +2,21 @@
  * The board canvas (D-368): the stripboard drawn in SVG at real proportions, parts side,
  * parts as outlines with ref and value, shorted copper red (D-374), the off-board parts
  * beside it with their lugs and wires (D-375). Pans (drag the empty
- * board), zooms (wheel, the canvas's buttons), and tells the view what was clicked,
+ * board), zooms (wheel, the canvas's buttons), draws the guidance (D-377: the ratsnest,
+ * the suggested cuts and links faded, the holes marked for a part being carried), and tells the view what was clicked,
  * pressed, dragged and hovered, as holes; draws the view's ghost (a part being carried, a
  * link being laid, the hole a tool would act on). The shapes come from `board-logic.js`;
  * the board and footprints from the view.
  */
 
 import { fitView, panBy, viewBoxText, zoomAt, resizeView } from "../schematic/viewport.js";
-import { STEP, columnName, holeName, holeXY, itemRefs, itemShape, labelAt, partShapes, shortedRects, shownHoles, valueOf } from "./board-logic.js";
+import { STEP, columnName, holeName, holeXY, itemRefs, itemShape, labelAt, legLabel, partShapes, pointAlong, routePath, runRects, shownHoles, valueOf, wireHops, wireObstacles, wireRoutes } from "./board-logic.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const FIT_PAD = STEP; // board units round the shown holes when fitting
 const MAX_FIT_SCALE = 6; // screen pixels per board unit when fitting a small board
 const CLICK_PX = 4; // a press that moves less than this is a click, not a pan
+const FLIP_MS = 450; // the board turning over (D-378)
 
 /**
  * @param {string} tag @param {Record<string, string | number>} [attrs] @param {Element} [parent]
@@ -28,12 +30,25 @@ function el(tag, attrs = {}, parent) {
 }
 
 /**
+ * One of a part's shapes (`partShapes`), leads aside: a body, a band, a marking.
+ * @param {import("./board-logic.js").Shape} s @param {Element} parent
+ */
+function drawShape(s, parent) {
+  if (s.kind === "rect") el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, rx: Math.min(s.h / 3, 3), transform: `rotate(${s.angle} ${s.cx} ${s.cy})`, class: "body" }, parent);
+  else if (s.kind === "circle") el("circle", { cx: s.cx, cy: s.cy, r: s.r, class: "body" }, parent);
+  else if (s.kind === "band") el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, transform: `rotate(${s.angle} ${s.cx} ${s.cy})`, class: `band band-${s.colour}` }, parent);
+  else if (s.kind === "path") el("path", { d: s.d, transform: `translate(${s.cx} ${s.cy}) rotate(${s.angle})`, class: s.cls }, parent);
+}
+
+/**
  * @typedef {import("./board-logic.js").Hole} Hole
  * @typedef {{ref: string | null, hole: Hole, link: [Hole, Hole] | null, item: string | null,
- *   lug: string | null, wire: {index: number, end: "lug" | "far"} | null, point: [number, number]}} Spot
+ *   lug: string | null, wire: {index: number, end: "lug" | "far" | "run", run: number} | null,
+ *   suggest: {kind: "cut" | "link", holes: Hole[]} | null, point: [number, number]}} Spot
  *   what's under the pointer: a board part's ref, the nearest hole, a link's ends; an
- *   off-board part's ref, a lug's end, a wire's number and which end (D-375); the point in
- *   board units
+ *   off-board part's ref, a lug's end, a wire's number and which end (D-375) or which of
+ *   its middle runs (`end` "run", D-380); a suggested
+ *   cut or link (D-377); the point in board units
  * @typedef {{
  *   onClick: (spot: Spot) => void,
  *   onLine: (axis: "column" | "strip", line: number, x: number, y: number) => void,
@@ -50,13 +65,19 @@ function el(tag, attrs = {}, parent) {
  *   panning; `onHover`: the pointer over the board with no button down (null: it left);
  *   `onMenu`: a right-click, true when the view showed a menu for it
  * @typedef {{part?: {fp: Footprint, legs: Array<[string, Hole]>, standing: boolean}, link?: [Hole, Hole], hole?: Hole,
- *   item?: {item: OffItem, at: Hole}, wire?: {x1: number, y1: number, x2: number, y2: number}}} Ghost
- *   what the view is about to do, drawn faint over the board
+ *   item?: {item: OffItem, at: Hole}, wire?: {x1: number, y1: number, x2: number, y2: number},
+ *   route?: Array<[number, number]>, marks?: Hole[]}} Ghost
+ *   what the view is about to do, drawn faint over the board; `marks`: the holes where a
+ *   carried part's legs would join their nets (D-377); `route`: a wire's route as a run of
+ *   it is dragged (D-380)
+ * @typedef {{rats: Array<{net: string, a: Hole, b: Hole}>, cuts: Hole[], links: Array<[Hole, Hole]>}} Guide
+ *   the guidance drawn on the board (D-377): the ratsnest, the suggested cuts and links
  * @typedef {import("./board-logic.js").OffItem} OffItem
  * @typedef {import("./board-logic.js").LugAt} LugAt
  * @typedef {{items: Array<{item: OffItem, at: Hole}>, wires: Array<{index: number,
- *   line: {x1: number, y1: number, x2: number, y2: number, loose: boolean}, title: string}>}} OffBoard
- *   the off-board parts beside the board, where, and the wires' lines (D-375)
+ *   line: import("./board-logic.js").WireLine, title: string, pad?: boolean}>}} OffBoard
+ *   the off-board parts beside the board, where, and the wires' ends (D-375), drawn routed
+ *   with hops (D-379); `pad`: the wire's far end is in a hole (a solder joint on the copper side)
  * @typedef {import("./board-logic.js").Board} Board
  * @typedef {import("./board-logic.js").Footprint} Footprint
  */
@@ -77,9 +98,17 @@ export function boardCanvas(svg, app) {
   let lit = [];
   /** @type {string[]} */
   let litItems = [];
+  /** @type {Set<string>} */
+  let litNets = new Set();
   /** @type {Ghost | null} */
   let ghosted = null;
   let pressing = false; // a press on the board is being dragged: no hover then
+  let copper = false; // the copper side up, mirrored (D-378)
+  let flipping = false;
+  /** @type {Parameters<typeof draw> | null} the last drawing, drawn again when the board turns over */
+  let drawn = null;
+  /** The board's middle column, in board units: what it turns over about. */
+  const middle = () => (holes ? ((holes.c0 + holes.c1) / 2) * STEP : 0);
 
   const size = () => {
     const r = svg.getBoundingClientRect();
@@ -91,7 +120,8 @@ export function boardCanvas(svg, app) {
   };
   const toBoard = (/** @type {number} */ clientX, /** @type {number} */ clientY) => {
     const r = svg.getBoundingClientRect();
-    return [vb.x + ((clientX - r.left) / (r.width || 1)) * vb.w, vb.y + ((clientY - r.top) / (r.height || 1)) * vb.h];
+    const x = vb.x + ((clientX - r.left) / (r.width || 1)) * vb.w;
+    return [copper ? 2 * middle() - x : x, vb.y + ((clientY - r.top) / (r.height || 1)) * vb.h];
   };
   new ResizeObserver(() => {
     if (!shown || svg.getBoundingClientRect().width === 0) return; // hidden: keep the view
@@ -128,13 +158,16 @@ export function boardCanvas(svg, app) {
   /**
    * Draw a board. `fit`: fit the view to it (the first time it's shown).
    * @param {Board} board @param {Record<string, Footprint>} footprints @param {any} circuit
-   * @param {{fit?: boolean, values?: boolean, rulers?: boolean, fixed?: boolean, shorted?: Array<[number, number, number]>, off?: OffBoard}} [opts]
+   * @param {{fit?: boolean, values?: boolean, rulers?: boolean, fixed?: boolean, shorted?: Array<[number, number, number]>, rails?: Record<string, Array<[number, number, number]>>, off?: OffBoard, guide?: Guide, seeThrough?: boolean}} [opts]
    *   `values`: label parts with their values too; `rulers`: the columns' letters and the
    *   strips' numbers, each a menu of size changes (a board that's started); `fixed`: auto-grow
    *   off, the margin greyed (D-372); `shorted`: the copper carrying two nets, red (D-374);
-   *   `off`: the off-board parts and wires (D-375)
+   *   `rails`: the copper carrying only a rail, by net, tinted (Highlight rails, D-381);
+   *   `off`: the off-board parts and wires (D-375); `guide`: the guidance (D-377);
+   *   `seeThrough`: the parts' bodies faint, the copper and cuts under them showing (D-378)
    */
-  function draw(board, footprints, circuit, { fit: fitting = false, values = true, rulers = false, fixed = false, shorted = [], off = { items: [], wires: [] } } = {}) {
+  function draw(board, footprints, circuit, { fit: fitting = false, values = true, rulers = false, fixed = false, shorted = [], rails = {}, off = { items: [], wires: [] }, guide = { rats: [], cuts: [], links: [] }, seeThrough = false } = {}) {
+    drawn = [board, footprints, circuit, { values, rulers, fixed, shorted, rails, off, guide, seeThrough }];
     holes = shownHoles(board);
     beside = null;
     for (const { item, at } of off.items) {
@@ -143,7 +176,8 @@ export function boardCanvas(svg, app) {
       beside = beside ? { minX: Math.min(beside.minX, minX), minY: Math.min(beside.minY, minY), maxX: Math.max(beside.maxX, maxX), maxY: Math.max(beside.maxY, maxY) } : { minX, minY, maxX, maxY };
     }
     svg.replaceChildren();
-    const root = el("g", { class: fixed ? "board board-fixed" : "board" }, svg);
+    const root = el("g", { class: ["board", fixed ? "board-fixed" : "", seeThrough ? "see-through" : "", copper ? "copper" : ""].filter(Boolean).join(" ") }, svg);
+    if (copper) root.setAttribute("transform", `translate(${2 * middle()} 0) scale(-1 1)`);
     const { c0, s0, c1, s1 } = holes;
     const half = STEP / 2;
     // the margin's holes, faint; the board itself, its strips and holes
@@ -155,7 +189,11 @@ export function boardCanvas(svg, app) {
       for (let s = 0; s < board.strips; s++) {
         el("rect", { x: -half + 0.6, y: s * STEP - half + 0.8, width: board.columns * STEP - 1.2, height: STEP - 1.6, rx: 1, class: "strip" }, strips);
       }
-      for (const r of shortedRects(shorted)) el("rect", { x: r.x + 0.6, y: r.y + 0.8, width: r.w - 1.2, height: r.h - 1.6, rx: 1, class: "strip shorted" }, strips);
+      for (const [net, runs] of Object.entries(rails)) {
+        const cls = net === "GND" ? "rail-ground" : "rail-supply";
+        for (const r of runRects(runs)) el("rect", { x: r.x + 0.6, y: r.y + 0.8, width: r.w - 1.2, height: r.h - 1.6, rx: 1, class: `strip ${cls}`, "data-rail": net }, strips);
+      }
+      for (const r of runRects(shorted)) el("rect", { x: r.x + 0.6, y: r.y + 0.8, width: r.w - 1.2, height: r.h - 1.6, rx: 1, class: "strip shorted" }, strips);
     }
     const dots = el("g", { class: "holes" }, root);
     for (let s = s0; s <= s1; s++) {
@@ -187,7 +225,9 @@ export function boardCanvas(svg, app) {
       const mark = (/** @type {"column" | "strip"} */ axis, /** @type {number} */ line, /** @type {number} */ x, /** @type {number} */ y, /** @type {string} */ text) => {
         const g = el("g", { class: "ruler", "data-axis": axis, "data-line": line }, ruled);
         el("rect", { x: x - half, y: y - half, width: STEP, height: STEP, class: "ruler-hit" }, g);
-        el("text", { x, y, "text-anchor": "middle", "dominant-baseline": "central" }, g).textContent = text;
+        const label = el("text", { x, y, "text-anchor": "middle", "dominant-baseline": "central" }, g);
+        label.textContent = text;
+        if (copper) label.setAttribute("transform", `translate(${2 * x} 0) scale(-1 1)`); // readable on the mirrored side
         el("title", {}, g).textContent = `${axis === "column" ? "Column" : "Strip"} ${text}: insert or remove`;
       };
       for (let c = 0; c < board.columns; c++) mark("column", c, c * STEP, (s0 - 1) * STEP, columnName(c));
@@ -197,7 +237,7 @@ export function boardCanvas(svg, app) {
     const labels = el("g", { class: "board-labels" }, root); // over every body
     for (const placed of board.parts) {
       const fp = footprints[placed.ref];
-      const g = el("g", { class: fp ? "board-part" : "board-part stale", "data-ref": placed.ref }, parts);
+      const g = el("g", { class: fp ? `board-part kind-${fp.kind}${fp.look?.minus ? " polarised" : ""}` : "board-part stale", "data-ref": placed.ref }, parts);
       if (!fp) {
         // no longer in the circuit, or no footprint: its legs only, marked
         for (const [, hole] of placed.legs) el("circle", { cx: holeXY(hole)[0], cy: holeXY(hole)[1], r: STEP * 0.3, class: "leg" }, g);
@@ -207,25 +247,56 @@ export function boardCanvas(svg, app) {
       const legs = [...placed.legs].sort((a, b) => (order.get(a[0]) ?? 0) - (order.get(b[0]) ?? 0));
       const shapes = partShapes(fp, legs, placed.standing);
       for (const s of shapes.filter((s) => s.kind === "lead")) el("line", { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, class: "lead" }, g);
-      for (const s of shapes) {
-        if (s.kind === "rect") el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, rx: Math.min(s.h / 3, 3), transform: `rotate(${s.angle} ${s.cx} ${s.cy})`, class: "body" }, g);
-        else if (s.kind === "circle") el("circle", { cx: s.cx, cy: s.cy, r: s.r, class: "body" }, g);
-      }
+      for (const s of shapes) drawShape(s, g);
       for (const [, hole] of legs) el("circle", { cx: holeXY(hole)[0], cy: holeXY(hole)[1], r: STEP * 0.16, class: "leg" }, g);
+      for (const [leg, hole] of legs) { // named on hover (D-378)
+        const [x, y] = holeXY(hole);
+        el("text", { x: x + STEP * 0.3, y: y - STEP * 0.3, class: "leg-name" }, g).textContent = legLabel(fp, leg);
+      }
       const [lx, ly] = labelAt(shapes);
       const text = el("text", { x: lx, y: ly, class: "board-label", "text-anchor": "middle", "data-ref": placed.ref }, labels);
       const value = values ? valueOf(circuit, placed.ref, fp.refs) : "";
       el("tspan", { x: lx, dy: value ? "-0.15em" : "0.35em", class: "ref" }, text).textContent = placed.ref;
       if (value) el("tspan", { x: lx, dy: "1.05em", class: "value" }, text).textContent = value;
     }
+    const guiding = el("g", { class: "guide" }, root); // over the parts, so a suggestion can be clicked
+    for (const { net, a, b } of guide.rats) {
+      const [x1, y1] = holeXY(a);
+      const [x2, y2] = holeXY(b);
+      el("line", { x1, y1, x2, y2, class: "rat", "data-net": net }, guiding);
+      for (const [cx, cy] of [[x1, y1], [x2, y2]]) el("circle", { cx, cy, r: 0.9, class: "rat rat-end", "data-net": net }, guiding);
+    }
+    for (const [a, b] of guide.links) {
+      const [x1, y1] = holeXY(a);
+      const [x2, y2] = holeXY(b);
+      const g = el("g", { class: "suggested", "data-suggest": "link", "data-holes": `${a.join(",")};${b.join(",")}` }, guiding);
+      el("line", { x1, y1, x2, y2, class: "link-hit" }, g);
+      el("line", { x1, y1, x2, y2, class: "suggested-link" }, g);
+      el("title", {}, g).textContent = `Suggested link ${holeName(a)}–${holeName(b)}: click to lay it`;
+    }
+    for (const cut of guide.cuts) {
+      const [x, y] = holeXY(cut);
+      const d = STEP * 0.28;
+      const g = el("g", { class: "suggested", "data-suggest": "cut", "data-holes": cut.join(",") }, guiding);
+      el("circle", { cx: x, cy: y, r: STEP * 0.45, class: "suggest-hit" }, g);
+      el("path", { d: `M${x - d},${y - d} L${x + d},${y + d} M${x - d},${y + d} L${x + d},${y - d}`, class: "suggested-cut" }, g);
+      el("title", {}, g).textContent = `Suggested cut at ${holeName(cut)}: click to cut the strip there`;
+    }
     const wires = el("g", { class: "off-wires" }, root); // over the parts: a wire lies on top
-    for (const { index, line, title } of off.wires) {
-      const g = el("g", { class: line.loose ? "off-wire loose" : "off-wire", "data-wire": index }, wires);
-      el("line", { x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2, class: "wire" }, g);
-      const length = Math.hypot(line.x2 - line.x1, line.y2 - line.y1) || 1;
-      const grip = Math.min(STEP * 0.7, length / 3); // the lug end's grip, a little way along
-      const gx = line.x1 + ((line.x2 - line.x1) / length) * grip;
-      const gy = line.y1 + ((line.y2 - line.y1) / length) * grip;
+    const routes = wireRoutes(off.wires.map((w) => w.line), board, wireObstacles(board, footprints, off.items));
+    const hops = wireHops(routes);
+    const byHand = (/** @type {number} */ i) => Number(Boolean(off.wires[i].line.runs?.length));
+    const order = off.wires.map((_, i) => i).sort((a, b) => byHand(a) - byHand(b)); // moved by hand on top: pressed first (D-380)
+    for (const i of order) {
+      const { index, line, title, pad } = off.wires[i];
+      const route = routes[i] ?? [[line.x1, line.y1], [line.x2, line.y2]];
+      const g = el("g", { class: ["off-wire", line.loose ? "loose" : "", pad ? "pad" : "", byHand(i) ? "by-hand" : ""].filter(Boolean).join(" "), "data-wire": index }, wires);
+      el("path", { d: routePath(route, hops[i]), class: "wire" }, g);
+      for (let run = 1; run < route.length - 2; run++) { // its middle runs, each moved by dragging (D-380)
+        const [[ax, ay], [bx, by]] = [route[run], route[run + 1]];
+        el("line", { x1: ax, y1: ay, x2: bx, y2: by, class: `wire-run ${ay === by ? "level" : "upright"}`, "data-end": "run", "data-run": run }, g);
+      }
+      const [gx, gy] = pointAlong(route, STEP * 0.5); // the lug end's grip, a little way along
       el("circle", { cx: gx, cy: gy, r: STEP * 0.16, class: "wire-end lug-end", "data-end": "lug" }, g);
       el("circle", { cx: line.x2, cy: line.y2, r: STEP * 0.22, class: "wire-end far-end", "data-end": "far" }, g);
       el("title", {}, g).textContent = title;
@@ -234,7 +305,14 @@ export function boardCanvas(svg, app) {
     if (fitting || !shown) fit();
     else apply();
     light(lit, litItems);
+    lightNets(litNets);
     ghost(ghosted);
+  }
+
+  /** Light the ratsnest lines of `nets` (a selected or carried part's, D-377). @param {Set<string>} nets */
+  function lightNets(nets) {
+    litNets = nets;
+    for (const line of svg.querySelectorAll(".guide .rat")) line.classList.toggle("lit", nets.has(line.getAttribute("data-net") ?? ""));
   }
 
   /**
@@ -258,18 +336,55 @@ export function boardCanvas(svg, app) {
     }
   }
 
+  /**
+   * Turn the board over (D-378): the copper side up, mirrored as it lies under the iron,
+   * cuts ✕ and every solder joint; again, back to the parts side. A short animation,
+   * none when the system asks for less motion. Holes are picked through the mirror.
+   * @param {(copper: boolean) => void} [done] told the side now up
+   */
+  function flip(done) {
+    if (flipping || !drawn) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const to = !copper;
+    // the drawing may be replaced on the way (edge on, or a fresh check): find it each frame
+    const turn = (/** @type {number} */ scale) => svg.querySelector("g.board")?.setAttribute("transform", `translate(${middle() * (1 - scale)} 0) scale(${scale} 1)`);
+    const land = () => {
+      flipping = false;
+      copper = to;
+      if (drawn) draw(...drawn);
+      done?.(copper);
+    };
+    if (still) return land();
+    flipping = true;
+    const start = performance.now();
+    let swapped = false;
+    const step = (/** @type {number} */ now) => {
+      const t = Math.min(1, (now - start) / FLIP_MS);
+      const scale = Math.cos(Math.PI * t) * (to ? 1 : -1); // 1 → −1 to the copper side, −1 → 1 back
+      if (!swapped && t >= 0.5) { // edge on: the other side's drawing
+        swapped = true;
+        copper = to;
+        if (drawn) draw(...drawn);
+      }
+      turn(scale);
+      if (t < 1) requestAnimationFrame(step);
+      else land();
+    };
+    requestAnimationFrame(step);
+  }
+
   /** Draw what the view is about to do, faint (null: nothing). @param {Ghost | null} what */
   function ghost(what) {
     ghosted = what;
     const layer = svg.querySelector(".ghost");
     if (!layer) return;
     layer.replaceChildren();
+    for (const hole of what?.marks ?? []) el("circle", { cx: holeXY(hole)[0], cy: holeXY(hole)[1], r: STEP * 0.3, class: "mark" }, layer);
     if (what?.part) {
       const { fp, legs, standing } = what.part;
       for (const s of partShapes(fp, legs, standing)) {
         if (s.kind === "lead") el("line", { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, class: "lead" }, layer);
-        else if (s.kind === "rect") el("rect", { x: s.x, y: s.y, width: s.w, height: s.h, rx: Math.min(s.h / 3, 3), transform: `rotate(${s.angle} ${s.cx} ${s.cy})`, class: "body" }, layer);
-        else el("circle", { cx: s.cx, cy: s.cy, r: s.r, class: "body" }, layer);
+        else drawShape(s, layer);
       }
       for (const [, hole] of legs) el("circle", { cx: holeXY(hole)[0], cy: holeXY(hole)[1], r: STEP * 0.2, class: "leg" }, layer);
     }
@@ -283,6 +398,7 @@ export function boardCanvas(svg, app) {
     }
     if (what?.item) drawItem(what.item.item, what.item.at, layer, false, "off-item");
     if (what?.wire) el("line", { ...what.wire, class: "wire" }, layer);
+    if (what?.route) el("path", { d: routePath(what.route), class: "wire" }, layer);
   }
 
   /**
@@ -318,13 +434,16 @@ export function boardCanvas(svg, app) {
     const ends = link ? ["data-a", "data-b"].map((k) => /** @type {Hole} */ (String(link.getAttribute(k)).split(",").map(Number))) : null;
     const wire = at.closest(".off-wire");
     const end = at.closest("[data-end]")?.getAttribute("data-end");
+    const suggested = at.closest(".suggested");
+    const holes = suggested ? String(suggested.getAttribute("data-holes")).split(";").map((h) => /** @type {Hole} */ (h.split(",").map(Number))) : [];
     return {
       ref: at.closest(".board-part")?.getAttribute("data-ref") ?? null,
       hole: holeAt(clientX, clientY),
       link: /** @type {[Hole, Hole] | null} */ (ends),
       item: at.closest(".off-items .off-item")?.getAttribute("data-item") ?? null,
       lug: at.closest(".off-items .lug")?.getAttribute("data-lug") ?? null,
-      wire: wire && end ? { index: Number(wire.getAttribute("data-wire")), end: end === "lug" ? "lug" : "far" } : null,
+      wire: wire && end ? { index: Number(wire.getAttribute("data-wire")), end: end === "lug" || end === "run" ? end : "far", run: Number(at.closest("[data-run]")?.getAttribute("data-run") ?? -1) } : null,
+      suggest: suggested ? { kind: suggested.getAttribute("data-suggest") === "link" ? "link" : "cut", holes } : null,
       point: /** @type {[number, number]} */ (toBoard(clientX, clientY)),
     };
   };
@@ -373,7 +492,11 @@ export function boardCanvas(svg, app) {
 
   return {
     draw,
+    flip,
+    /** Whether the copper side is up (D-378). */
+    copper: () => copper,
     light,
+    lightNets,
     fit,
     ghost,
     holeAt,
