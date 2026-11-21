@@ -448,6 +448,48 @@ export function wireLine(wire, lugs) {
   return { ...start, x2: from.x, y2: from.y + LOOSE_DROP, loose: true, hole: false };
 }
 
+/**
+ * An off-board lug in words: "VR1 lug 2", "IN T", "Power V+".
+ * @param {Progress | null} progress @param {string} end @returns {string}
+ */
+export function lugWords(progress, end) {
+  const item = progress?.items.find((i) => i.lugs.some((l) => l.end === end));
+  const lug = item?.lugs.find((l) => l.end === end);
+  if (!item || !lug) return end;
+  const name = item.kind === "power" ? "Power" : item.ref;
+  return /^\d/.test(lug.label) ? `${name} lug ${lug.label}` : `${name} ${lug.label}`;
+}
+
+/**
+ * Each part moved on or off the board by choice, its mark's words (D-385).
+ * @param {Progress | null} progress @returns {Record<string, string>}
+ */
+export function chosenMarks(progress) {
+  /** @type {Record<string, string>} */
+  const marks = {};
+  for (const [ref, choice] of Object.entries(progress?.choices ?? {})) if (choice.moved) marks[ref] = choiceMark(choice);
+  return marks;
+}
+
+/**
+ * The off-board parts beside the board and their wires, as the canvas draws them (D-375):
+ * each part at its spot (the board's, else the server's default), each drawn wire with
+ * its title.
+ * @param {Progress | null} progress @param {Board} board
+ * @returns {{items: Array<{item: OffItem, at: Hole}>, wires: Array<{index: number, line: WireLine, title: string, pad: boolean}>}}
+ */
+export function offBoardDrawing(progress, board) {
+  if (!progress) return { items: [], wires: [] };
+  const lugs = lugPlaces(progress, board);
+  const shown = progress.items.filter((i) => isOut(i, board));
+  const wires = board.wires.flatMap((wire, index) => {
+    const line = wireLine(wire, lugs);
+    const far = wire.hole ? holeName(wire.hole) : wire.to ? lugWords(progress, wire.to) : "loose";
+    return line ? [{ index, line, title: `${lugWords(progress, wire.lug)} to ${far}: drag either end to move it`, pad: Boolean(wire.hole) }] : [];
+  });
+  return { items: shown.map((item) => ({ item, at: board.spots[item.ref] ?? progress.spots[item.ref] ?? /** @type {Hole} */ ([0, 0]) })), wires };
+}
+
 const CORNER = STEP * 0.25; // a bend's rounding
 export const HOP = STEP * 0.3; // a hop's radius, where a wire crosses another
 const GRID = STEP / 2; // wires run on a half-hole grid: on the board, along the gaps between holes
@@ -456,6 +498,7 @@ const BEND = 4; // a bend costs this many steps
 const CROSS = 6; // crossing another wire
 const ON_TOP = 200; // lying along another wire, or through its bend: only when there's no other way
 const INSIDE = 6; // a step across a switch's outline costs this many beside it (D-384)
+const OUTLINE = 12; // a step on the outline's own line: crossed once to reach a lug, never run along (D-384)
 
 /**
  * @typedef {{boxes: Box[], lines: Array<[number, number, number, number]>, soft?: Box[]}} Obstacles
@@ -540,7 +583,8 @@ function searchRoutes(lines, board, obstacles) {
   for (let n = 0; n < cols * rows; n++) {
     const [x, y] = xy(n);
     const over = x >= edge.left && x <= edge.right && y >= edge.top && y <= edge.bottom;
-    dear[n] = soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) ? 2 : over ? 1 : 0;
+    const onLine = soft.some((b) => x >= b.x - 1 && x <= b.x + b.w + 1 && y >= b.y - 1 && y <= b.y + b.h + 1 && (Math.abs(x - b.x) <= 1 || Math.abs(x - b.x - b.w) <= 1 || Math.abs(y - b.y) <= 1 || Math.abs(y - b.y - b.h) <= 1));
+    dear[n] = onLine ? 3 : soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) ? 2 : over ? 1 : 0;
     if (over && x % STEP === 0 && y % STEP === 0) wall[n] = 1; // a hole: only a wire's own end goes in
     if (obstacles.boxes.some((b) => x > b.x - 1 && x < b.x + b.w + 1 && y > b.y - 1 && y < b.y + b.h + 1)) wall[n] = 1;
     if (obstacles.lines.some(([ax, ay, bx, by]) => nearSegment(x, y, ax, ay, bx, by) < 1.5)) wall[n] = 1;
@@ -621,7 +665,7 @@ function searchRoutes(lines, board, obstacles) {
         const m = at(ni, nj);
         if (m === goal ? into >= 0 && e !== into : wall[m]) continue;
         const level = e < 2 ? 1 : 2;
-        let step = dear[m] === 2 ? INSIDE : dear[m] ? ON_BOARD : 1;
+        let step = dear[m] === 3 ? OUTLINE : dear[m] === 2 ? INSIDE : dear[m] ? ON_BOARD : 1;
         if (e !== d) step += BEND;
         if (used[m] & level || (used[m] && e !== d)) step += ON_TOP;
         else if (used[m]) step += CROSS;
