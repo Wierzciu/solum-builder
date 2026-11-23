@@ -8,6 +8,7 @@ plain-English sentence naming the parts and holes; a layout with none is the cir
 """
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -195,9 +196,12 @@ def placement_faults(layout: Layout, board: dict[str, BoardPart],
     return faults
 
 
-def copper_groups(layout: Layout) -> dict[Hole, int]:
-    """Each copper hole's joined group: its strip segment's, with links joining segments."""
-    seg = segments(layout)
+def copper_groups(layout: Layout, holes: Iterable[Hole] | None = None) -> dict[Hole, int]:
+    """Each copper hole's joined group: its strip segment's, with links joining segments.
+    `holes`: only these (`segments`)."""
+    ends = [h for link in layout.links for h in (link.a, link.b)]
+    wanted = None if holes is None else set(holes)
+    seg = segments(layout, None if wanted is None else wanted | set(ends))
     parent: dict[int, int] = {}
 
     def find(a: int) -> int:
@@ -209,14 +213,17 @@ def copper_groups(layout: Layout) -> dict[Hole, int]:
         a, b = seg.get(link.a), seg.get(link.b)
         if a is not None and b is not None:
             parent[max(find(a), find(b))] = min(find(a), find(b))
-    return {hole: find(n) for hole, n in seg.items()}
+    return {hole: find(n) for hole, n in seg.items() if wanted is None or hole in wanted}
 
 
-def joined_groups(layout: Layout) -> tuple[dict[Hole, int], dict[str, int]]:
+def joined_groups(layout: Layout, holes: Iterable[Hole] | None = None,
+                  ) -> tuple[dict[Hole, int], dict[str, int]]:  # fmt: skip
     """Each copper hole's group and each wired lug's, wires joining them (D-375): a lug
     wired to a hole is in that hole's group, lugs wired together share one; a lug only on
-    a loose wire, or wired to a cut hole or one off the board, has none."""
-    copper = copper_groups(layout)
+    a loose wire, or wired to a cut hole or one off the board, has none. `holes`: only
+    these holes' groups (quick on a big board; the lugs all the same)."""
+    wanted = None if holes is None else set(holes)
+    copper = copper_groups(layout, None if wanted is None else wanted | set(layout.pads))
     parent: dict[tuple[str, object], tuple[str, object]] = {}
 
     def find(node: tuple[str, object]) -> tuple[str, object]:
@@ -237,7 +244,7 @@ def joined_groups(layout: Layout) -> tuple[dict[Hole, int], dict[str, int]]:
     members: dict[tuple[str, object], list[tuple[str, object]]] = defaultdict(list)
     for node in list(parent):
         members[find(node)].append(node)
-    fresh = max(copper.values(), default=0) + 1
+    fresh = layout.strips + len(layout.cuts) + 1  # past every segment's number
     number: dict[tuple[str, object], int] = {}
     for root, nodes in sorted(members.items(), key=lambda kv: repr(kv[0])):
         coppers = [int(str(n[1])) for n in [root, *nodes] if n[0] == "copper"]
@@ -245,9 +252,10 @@ def joined_groups(layout: Layout) -> tuple[dict[Hole, int], dict[str, int]]:
             number[root] = min(coppers)
         else:
             number[root], fresh = fresh, fresh + 1
-    holes = {h: number.get(find(("copper", g)), g) for h, g in copper.items()}
+    found = {h: number.get(find(("copper", g)), g) for h, g in copper.items()
+             if wanted is None or h in wanted}  # fmt: skip
     lugs = {str(n[1]): number[find(n)] for n in [*parent, *members] if n[0] == "lug"}
-    return holes, lugs
+    return found, lugs
 
 
 def stripboard_nets(layout: Layout, board: dict[str, BoardPart]) -> dict[Terminal, int]:
@@ -601,8 +609,9 @@ def _terminal_id(t: Terminal, words: _Words) -> str:
     return f"{ref}.{leg}"
 
 
-def _wrong_way(r: Reading, circuit: Circuit) -> list[str]:
-    """Each polarised two-leg part placed each leg on the other's net."""
+def _wrong_way(r: Reading, circuit: Circuit) -> list[tuple[str, str]]:
+    """Each polarised two-leg part placed each leg on the other's net: its ref, and the
+    fault in words."""
     kinds = {p.ref: p for p in circuit.parts}
     faults = []
     by_group = groups_by_net(r)
@@ -621,17 +630,21 @@ def _wrong_way(r: Reading, circuit: Circuit) -> list[str]:
         if (len(here_a[net_b]) and len(here_b[net_a]) and len(here_a[net_a]) == 1
                 and len(here_b[net_b]) == 1):  # fmt: skip
             faults.append(
-                f"{placed.ref} is the wrong way round: {r.words(a)} and {r.words(b)} are "
-                "each on the other's strip. Turn it."
+                (
+                    placed.ref,
+                    f"{placed.ref} is the wrong way round: {r.words(a)} and {r.words(b)} are "
+                    "each on the other's strip. Turn it.",
+                )
             )
     return faults
 
 
-def _misplaced(r: Reading, wanted: dict[str, list[Terminal]], skip: set[str]) -> list[str]:
+def _misplaced(r: Reading, wanted: dict[str, list[Terminal]],
+               skip: set[str]) -> list[tuple[str, str]]:  # fmt: skip
     """Each placed leg on a strip that carries only other nets (a part rewired in the
     schematic since it was placed, or a leg a strip off), with where it should go: the
-    terminals of its own net, the placed ones by hole. Parts in `skip` (already named the
-    wrong way round) are left out."""
+    terminals of its own net, the placed ones by hole: the leg's part's ref, and the fault
+    in words. Parts in `skip` (already named the wrong way round) are left out."""
     found = []
     by_group = groups_by_net(r)
     for t in sorted(r.words.leg_of, key=_key):
@@ -651,10 +664,42 @@ def _misplaced(r: Reading, wanted: dict[str, list[Terminal]], skip: set[str]) ->
             many = "s" if len(unplaced) > 1 else ""
             goes = f"{len(unplaced)} terminal{many} not on the board yet"
         found.append(
-            f"{_cap(r.words(t))} is on the strip of {', '.join(others)}, but the circuit puts "
-            f"it on {own}: it should join {goes}."
+            (
+                ref,
+                f"{_cap(r.words(t))} is on the strip of {', '.join(others)}, but the circuit puts "
+                f"it on {own}: it should join {goes}.",
+            )
         )
     return found
+
+
+def _wanted(r: Reading) -> dict[str, list[Terminal]]:
+    """Every terminal each net has, placed or not."""
+    wanted: dict[str, list[Terminal]] = defaultdict(list)
+    for part in r.board.values():
+        for pin in part.pins.values():
+            wanted[r.nets.net_of(*pin)].append(pin)
+    for end in sorted(r.needed):
+        wanted[r.ends[end]].append(end)
+    return wanted
+
+
+def _misfits(r: Reading, circuit: Circuit,
+             wanted: dict[str, list[Terminal]]) -> list[tuple[str, str]]:  # fmt: skip
+    """The parts placed the wrong way round, then the legs on another net's strip: each
+    its part's ref and the fault in words."""
+    turned = _wrong_way(r, circuit)
+    return [*turned, *_misplaced(r, wanted, {ref for ref, _ in turned})]
+
+
+def misfits(layout: Layout, circuit: Circuit, models: ModelLibrary,
+            table: FootprintTable) -> list[str]:  # fmt: skip
+    """The refs of the parts placed wrongly, in board order: the wrong way round, or a leg
+    on a strip carrying only other nets (as the progress check names them). *Tidy up*
+    offers them back to the tray."""
+    r = read_layout(layout, circuit, models, table)
+    found = {ref for ref, _ in _misfits(r, circuit, _wanted(r))}
+    return [p.ref for p in r.layout.parts if p.ref in found]
 
 
 def _listed(words: list[str]) -> str:
@@ -690,16 +735,8 @@ def progress(layout: Layout, circuit: Circuit, models: ModelLibrary,
               if not f.endswith(" isn't on the board.")]  # fmt: skip
     wiring, unwired, loose = _wire_faults(r)
     wiring = [f for f in wiring if "which isn't an off-board lug" not in f]  # stale, above
-    turned = _wrong_way(r, circuit)
-    # every terminal each net has, placed or not
-    wanted: dict[str, list[Terminal]] = defaultdict(list)
-    for part in r.board.values():
-        for pin in part.pins.values():
-            wanted[r.nets.net_of(*pin)].append(pin)
-    for end in sorted(r.needed):
-        wanted[r.ends[end]].append(end)
-    skip = {f.split(" ", 1)[0] for f in turned}
-    faults = [*faults, *wiring, *turned, *_misplaced(r, wanted, skip)]
+    wanted = _wanted(r)
+    faults = [*faults, *wiring, *(words for _, words in _misfits(r, circuit, wanted))]
     by_group = groups_by_net(r)
     seg = segments(r.layout)
     nets = []
