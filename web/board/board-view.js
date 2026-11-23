@@ -63,12 +63,14 @@ import { BOARD_SETTINGS, boardRefOf, choiceMark, chosenMarks, drawnBoard, firstP
  *   resting: () => Selection | null,
  *   shown: (board: boolean) => void,
  *   editBoard: (stripboard: any, label: string) => void,
+ *   editPart: (ref: string, patch: Record<string, unknown>, stripboard: any, label: string) => void,
  *   refuse: (message: string) => void,
  * }} BoardApp
  *   `resting`: what's selected when the empty canvas is clicked (the root's own choice);
  *   `shown`: told when the view changes, so the root sets its hint (`hint`) and buttons;
  *   `editBoard`: the circuit with this board (its plain form; null: none, Settings' *Remove
- *   board*, D-370), one undo step
+ *   board*, D-370), one undo step; `editPart`: a part's properties changed and this board
+ *   with it (a trimmer's style, D-393), one undo step
  */
 
 const BUTTON_TITLE = "Lay out a stripboard for this circuit";
@@ -217,9 +219,16 @@ export function boardView(host, app) {
     if (e.detail) seeButton.blur(); // clicked: the board's keys act again
   });
   const flipButton = $("board-flip");
-  flipButton.addEventListener("click", (e) => {
-    canvas.flip((copper) => flipButton.setAttribute("aria-pressed", String(copper)));
+  const mirrorButton = $("board-mirror");
+  mirrorButton.setAttribute("aria-pressed", String(settings.mirror));
+  const sideShown = (/** @type {boolean} */ copper) => flipButton.setAttribute("aria-pressed", String(copper));
+  flipButton.addEventListener("click", (e) => { // Hide parts (D-390)
+    canvas.show(!canvas.copper(), settings.mirror, sideShown);
     if (e.detail) flipButton.blur(); // clicked: the board's keys act again
+  });
+  mirrorButton.addEventListener("click", (e) => {
+    setSetting("mirror", !settings.mirror);
+    if (e.detail) mirrorButton.blur();
   });
   for (const b of tools.querySelectorAll("button[data-tool]")) b.addEventListener("click", () => {
     setTool(/** @type {any} */ (b.getAttribute("data-tool")));
@@ -605,7 +614,24 @@ export function boardView(host, app) {
     selectPart(ref);
     const pose = poseOf(fp, placed.legs, placed.standing) ?? firstPose(fp);
     const items = POSE_MOVES.filter((move) => posed(fp, pose, move)).map((move) => ({ label: `${moveWords(move, pose)}  (${MOVE_KEYS[move]})`, run: () => void repose(move, ref) }));
-    openMenu(x, y, [...items, { label: "Back to the tray  (Del)", run: () => void boardEdit({ kind: "remove", ref }, `${ref} back to the tray`) }]);
+    const part = app.circuit()?.parts.find((/** @type {any} */ p) => p.ref === ref);
+    const style = part?.type === "trimmer" ? (part.style === "inline" ? "triangle" : "inline") : null;
+    const restyle = style ? [{ label: style === "inline" ? "Make it an in-line trimmer" : "Make it a triangle trimmer", run: () => void restyleTrimmer(ref, style) }] : [];
+    openMenu(x, y, [...items, ...restyle, { label: "Back to the tray  (Del)", run: () => void boardEdit({ kind: "remove", ref }, `${ref} back to the tray`) }]);
+  }
+
+  /**
+   * A placed trimmer made the other board trimmer (D-393): its legs no longer fit, so it
+   * goes back to the tray in its new shape, to place again; one undo step.
+   * @param {string} ref @param {"triangle" | "inline"} style
+   */
+  async function restyleTrimmer(ref, style) {
+    try {
+      const { stripboard } = await postJson("api/stripboard/edit", { circuit: app.circuit(), kind: "remove", ref, grow: settings.grow, shorts: settings.shorts });
+      app.editPart(ref, { style: style === "inline" ? "inline" : null }, stripboard, `${ref} made ${style === "inline" ? "an in-line" : "a triangle"} trimmer`);
+    } catch (err) {
+      app.refuse(/** @type {Error} */ (err).message);
+    }
   }
 
   /** Cut the strip at a hole, or mend the cut there. @param {Hole} hole */
@@ -1007,6 +1033,8 @@ export function boardView(host, app) {
     settings = { ...settings, [key]: on };
     remember(SETTINGS_KEY, settings);
     seeButton.setAttribute("aria-pressed", String(settings.seeThrough));
+    mirrorButton.setAttribute("aria-pressed", String(settings.mirror));
+    if (key === "mirror") canvas.show(on || canvas.copper(), on, sideShown); // on from the parts side: the copper side, mirrored
     draw();
     fillPanes();
   }

@@ -1024,7 +1024,7 @@ def test_the_board_tray_and_settings(js: Page) -> None:
     assert got["groups"] == [["Resistors", ["R1"]], ["Chips", ["IC1"]]]
     assert got["wires"] == "1 of 3 placed; a wire from VR1 lug 2"
     assert got["none"] == {"values": True, "next": True, "shorts": True, "grow": True,
-                           "seeThrough": False, "rats": True, "rails": False}  # fmt: skip
+                           "seeThrough": False, "mirror": False, "rats": True, "rails": False}  # fmt: skip
     assert got["some"] == {**got["none"], "values": False}  # a garbled one at its default
 
 
@@ -1105,6 +1105,7 @@ def test_a_carried_part_turns_flips_stands_and_lands_by_its_middle(js: Page) -> 
         const r = { shape: 'axial', legs: ['1', '2'], steps: [], flat: 4, stand: 1, refs: ['R1'] };
         const q = { shape: 'inline', legs: ['E', 'B', 'C'], steps: [1, 2], flat: 0, stand: 0, refs: ['Q1'] };
         const ic = { shape: 'dip', legs: ['1','2','3','4','5','6','7','8'], steps: [], flat: 0, stand: 0, row_holes: 3, refs: ['IC1A'] };
+        const tr = { shape: 'triangle', legs: ['1', '2', '3'], steps: [1], flat: 0, stand: 0, length: 6.6, width: 6.99, diameter: 0, refs: ['TR1'] };
         const first = b.firstPose(r);
         const turned = b.posed(r, first, 'turn');
         const standing = b.posed(r, first, 'stand');
@@ -1123,6 +1124,11 @@ def test_a_carried_part_turns_flips_stands_and_lands_by_its_middle(js: Page) -> 
           chip: b.legsAt(ic, b.firstPose(ic), [4, 4]),
           chipTurn: b.posed(ic, b.firstPose(ic), 'turn').turns,
           chipFlip: b.posed(ic, b.firstPose(ic), 'flip'),
+          tri: b.legsAt(tr, b.firstPose(tr), [5, 5]),
+          triTurned: b.legsAt(tr, b.posed(tr, b.firstPose(tr), 'turn'), [5, 5]),
+          triFlip: b.legsAt(tr, b.posed(tr, b.firstPose(tr), 'flip'), [5, 5]),
+          triPose: b.poseOf(tr, b.legsAt(tr, { turns: 3, flipped: false, standing: false, span: 1 }, [2, 2]), false),
+          triBody: b.partShapes(tr, b.legsAt(tr, b.firstPose(tr), [5, 5]), false).find((s) => s.kind === 'rect'),
           link: b.linkFrom([3, 1], [6, 5]),
           noLink: b.linkFrom([3, 1], [6, 1]),
           red: b.runRects([[7, 0, 11]]),
@@ -1142,6 +1148,13 @@ def test_a_carried_part_turns_flips_stands_and_lands_by_its_middle(js: Page) -> 
     assert got["poseTurned"]["turns"] == 2 and got["wideQ"] == 2
     assert got["chip"][:2] == [["1", [2, 2]], ["2", [2, 3]]] and got["chip"][7] == ["8", [5, 2]]
     assert got["chipTurn"] == 2 and got["chipFlip"] is None
+    # D-393: a triangle trimmer as footprints.triangle_legs, turned a quarter clockwise, or
+    # flipped (its ends 1 and 3 swapped); its body over its legs' box (column 4.5)
+    assert got["tri"] == [["1", [5, 4]], ["2", [4, 5]], ["3", [5, 6]]]
+    assert got["triTurned"] == [["1", [6, 5]], ["2", [5, 4]], ["3", [4, 5]]]
+    assert got["triFlip"] == [["3", [5, 4]], ["2", [4, 5]], ["1", [5, 6]]]
+    assert got["triPose"]["turns"] == 3
+    assert (got["triBody"]["cx"], got["triBody"]["cy"]) == (4.5 * 10, 5 * 10)
     assert got["link"] == [[3, 1], [3, 5]] and got["noLink"] is None
     assert got["red"] == [{"x": -5, "y": 65, "w": 120, "h": 10}]
     assert got["keys"] == ["turn", "flip", "stand", "longer", "shorter", "remove", "cuts",
@@ -1392,3 +1405,68 @@ def test_a_wire_into_a_switch_crosses_its_outline_once_never_along_it(js: Page) 
     assert along == []  # no run lies on the outline
     crossings = [p for p in got if on(*p)]
     assert len(crossings) <= 1
+
+
+def _beside(a: list[list[float]], b: list[list[float]], gap: float = 5) -> list[Any]:
+    """Runs of two routes that lie side by side `gap` apart for more than one step."""
+    found = []
+    for (p, q), (r, s) in ((x, y) for x in pairwise(a) for y in pairwise(b)):
+        for k in (0, 1):  # k = 1: level runs (same y), compared along x; k = 0: upright
+            if p[k] == q[k] and r[k] == s[k] and abs(p[k] - r[k]) == gap:
+                o = 1 - k
+                lo = max(min(p[o], q[o]), min(r[o], s[o]))
+                hi = min(max(p[o], q[o]), max(r[o], s[o]))
+                if hi - lo > gap:
+                    found.append((p, q, r, s))
+    return found
+
+
+def test_two_wires_never_run_right_beside_each_other(js: Page) -> None:
+    """The user, 2026-11-23 (Power GND and OUT S on the in-guitar boost's board read as one
+    line): a wire keeps a step's gap from another running the same way, where it can."""
+    s, g = run(
+        js,
+        """
+        const b = await m('board/board-logic.js');
+        const board = { columns: 10, strips: 8 };
+        const out = { x: -75, y: 30, w: 30, h: 20 }, power = { x: -60, y: 110, w: 20, h: 15 };
+        const s = { x1: -50, y1: 55, x2: 0, y2: 40, loose: false, hole: true, box: out };
+        const g = { x1: -50, y1: 130, x2: 0, y2: 0, loose: false, hole: true, box: power };
+        return b.wireRoutes([s, g], board, { boxes: [out, power], lines: [] });
+        """,
+    )
+    assert _beside(s, g) == []
+
+
+def test_a_wire_never_crosses_another_lug(js: Page) -> None:
+    """The user, 2026-11-23 (SW1 A1's wire ran over A2 and A3): every lug, wired or not,
+    keeps other wires off its ring; a wire leaves its own lug as before."""
+    got = run(
+        js,
+        """
+        const b = await m('board/board-logic.js');
+        const board = { columns: 14, strips: 4 };
+        const sw = { x: 85, y: -105, w: 50, h: 70 };  // above the board: A1 (100, -90), A2 (100, -70), A3 (100, -50), B1-B3 at x 120
+        const lugs = [[100, -90], [100, -70], [100, -50], [120, -90], [120, -70], [120, -50]];
+        const wire = (y, hx) => ({ x1: 100, y1: y, x2: hx, y2: 0, loose: false, hole: true, box: sw });
+        return b.wireRoutes([wire(-90, 100), wire(-70, 90), wire(-50, 110)], board, { boxes: [], lines: [], soft: [sw], lugs });
+        """,
+    )
+    lugs = [[100, -90], [100, -70], [100, -50], [120, -90], [120, -70], [120, -50]]
+    for own, route in zip(lugs, got, strict=False):
+        assert route[0] == own and route[-1][1] == 0
+        for lug in lugs:
+            if lug != own:
+                near = min(_distance(lug, p, q) for p, q in pairwise(route))
+                assert near >= 5, (own, lug, route)
+
+
+def _distance(c: list[float], p: list[float], q: list[float]) -> float:
+    (x, y), (ax, ay), (bx, by) = c, p, q
+    dx, dy = bx - ax, by - ay
+    t = (
+        max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+        if dx or dy
+        else 0.0
+    )
+    return float(((x - ax - t * dx) ** 2 + (y - ay - t * dy) ** 2) ** 0.5)

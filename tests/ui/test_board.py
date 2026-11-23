@@ -510,14 +510,14 @@ def test_a_part_placed_finishes_its_nets_and_the_board_is_saved_as_it_was(
     tray_c3 = page.locator("#board-tray-body li[data-ref='C3']")
     box = tray_c3.bounding_box()
     assert box
-    drag_to(page, (box["x"] + 20, box["y"] + box["height"] / 2), hole_point(page, 7, 2))  # H3
+    drag_to(page, (box["x"] + 20, box["y"] + box["height"] / 2), hole_point(page, 6, 2))  # G3
     c3 = page.locator("#board .board-part[data-ref='C3']")
     expect(c3).to_have_count(1)
     expect(progress).to_have_text("All 8 nets done.")
     expect(warnings).to_have_text("The board matches the circuit.")
     # flipped: its legs swap strips, named as it's made
-    # by its leg at H3, under a wire across the board: the wire doesn't take the click
-    page.mouse.click(*hole_point(page, 7, 2))
+    # by its leg at G3, under a wire across the board: the wire doesn't take the click
+    page.mouse.click(*hole_point(page, 6, 2))
     expect(c3).to_have_class(re.compile(r"\bboard-part\b.*\bselected\b"))
     page.keyboard.press("f")
     expect(warnings).to_contain_text("C3 is the wrong way round")
@@ -585,8 +585,8 @@ def test_the_guidance_marks_suggests_and_says_what_is_next(page: Page, base_url:
 
 def test_the_realistic_drawing_see_through_and_the_copper_side(page: Page, base_url: str) -> None:
     """D-378: R1's colour bands and C3's stripe drawn, each leg named; See-through makes the
-    bodies faint; Copper side turns the board over, mirrored, and a cut clicked there is the
-    cut under it (G8), mended."""
+    bodies faint; Hide parts shows the copper side (unmirrored, D-390), and a cut clicked
+    there is the cut under it (G8), mended."""
     open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
     show_board(page)
     expect(page.locator("#board .board-part[data-ref='R1'] .band")).to_have_count(4)
@@ -608,6 +608,60 @@ def test_the_realistic_drawing_see_through_and_the_copper_side(page: Page, base_
     page.locator("#board-flip").click()
     expect(page.locator("#board-flip")).to_have_attribute("aria-pressed", "false")
     expect(page.locator("#board g.board.copper")).to_have_count(0)
+
+
+def test_a_placed_trimmer_is_made_in_line_from_its_menu(page: Page, base_url: str) -> None:
+    """D-393: the Tone Bender (Mode)'s TR1 placed as a triangle (B1, A2, B3); its menu makes
+    it an in-line trimmer, back in the tray to place again, one undo step; Undo puts it back."""
+    page.goto(base_url)
+    circuit = page.request.get(f"{base_url}api/starters/tone-bender-mk2-mode").json()["circuit"]
+    circuit["stripboard"] = {"size": [6, 6], "parts": {"TR1": {"1": "B1", "2": "A2", "3": "B3"}}}
+    saved = page.request.post(
+        f"{base_url}api/circuits", data={"circuit": circuit, "name": "TB trimmer"}
+    )
+    assert saved.ok, saved.text()
+    open_circuit(page, base_url, "circuit/" + saved.json()["circuit"]["id"])
+    show_board(page)
+    tr1 = page.locator("#board .board-part[data-ref='TR1']")
+    expect(tr1).to_have_count(1)
+    tr1.click(button="right")
+    page.get_by_text("Make it an in-line trimmer").click()
+    expect(tr1).to_have_count(0)
+    page.keyboard.press("Control+z")
+    expect(tr1).to_have_count(1)
+
+
+def test_hide_parts_shows_the_copper_unmirrored_and_mirror_turns_it_over(
+    page: Page, base_url: str
+) -> None:
+    """D-390 (the user, 2026-11-23): Hide parts shows the copper side as seen from the parts
+    side, unmirrored, with its cuts and its links (in their own colour, visible); Mirror on
+    the bar turns it over as you hold the board to solder, and turning Mirror on from the
+    parts side shows the copper side mirrored; off again, unmirrored."""
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    board = page.locator("#board g.board")
+    link = page.locator("#board .links .link-end").first  # a line is zero-wide to Playwright
+    page.locator("#board-flip").click()  # Hide parts
+    expect(page.locator("#board-flip")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#board g.board.copper")).to_have_count(1)
+    expect(board).not_to_have_attribute("transform", re.compile("scale"))
+    expect(link).to_be_visible()
+    expect(page.locator("#board .cut")).to_have_count(1)
+    page.locator("#board-mirror").click()
+    expect(page.locator("#board-mirror")).to_have_attribute("aria-pressed", "true")
+    expect(board).to_have_attribute("transform", re.compile(r"scale\(-1 1\)"))
+    expect(link).to_be_visible()
+    page.locator("#board-flip").click()  # back to the parts side: never mirrored
+    expect(page.locator("#board g.board.copper")).to_have_count(0)
+    expect(board).not_to_have_attribute("transform", re.compile("scale"))
+    page.locator("#board-mirror").click()  # off
+    page.locator("#board-mirror").click()  # on from the parts side: the copper side, mirrored
+    expect(page.locator("#board g.board.copper")).to_have_count(1)
+    expect(page.locator("#board-flip")).to_have_attribute("aria-pressed", "true")
+    expect(board).to_have_attribute("transform", re.compile(r"scale\(-1 1\)"))
+    page.locator("#board-mirror").click()
+    expect(board).not_to_have_attribute("transform", re.compile("scale"))
 
 
 def test_a_join_no_link_can_make_is_explained_in_warnings(page: Page, base_url: str) -> None:
@@ -690,12 +744,13 @@ def test_the_kept_board_is_exported_drawn_by_the_board_canvas(page: Page, base_u
     target = page.evaluate("() => ({kind: 'circuit', id: location.hash.split('/').pop()})")
     drawn = page.evaluate("async (t) => (await import('/export.js')).boardSvgs(t)", target)
     board = drawn["board"]
-    assert set(board) == {"parts", "bare", "copper"}
+    assert set(board) == {"parts", "bare", "copper", "unmirrored"}
     for side in board.values():
         assert 'class="' not in side and "viewBox=" in side and ">F<" in side  # a column letter
         assert "Suggested" not in side and "drag either end" not in side
     assert "VR1" in board["parts"] and "VR1" not in board["bare"]
     assert ">R1<" in board["parts"] and ">R1<" not in board["copper"]  # labels on the parts side
+    assert "copper side, mirrored" in board["copper"] and "not mirrored" in board["unmirrored"]
     menu(page, "file-menu", "menu-export")
     sheet = page.locator("#export")
     with page.expect_download() as got:

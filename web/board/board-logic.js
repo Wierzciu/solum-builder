@@ -180,8 +180,10 @@ export function partShapes(fp, legs, standing) {
   const legAngle = round3((Math.atan2(last[1] - points[0][1], last[0] - points[0][0]) * 180) / Math.PI);
   /** Whether `leg` is the last leg (the far end of the legs' line). @param {string | undefined} leg */
   const atEnd = (leg) => legs.findIndex(([name]) => name === leg) === legs.length - 1;
-  const cx = points.reduce((s, p) => s + p[0], 0) / points.length;
-  const cy = points.reduce((s, p) => s + p[1], 0) / points.length;
+  const box = (/** @type {number} */ k) => (Math.min(...points.map((p) => p[k])) + Math.max(...points.map((p) => p[k]))) / 2;
+  // a triangle trimmer's body sits over its legs' box (D-393), the rest over their mean
+  const cx = fp.shape === "triangle" ? box(0) : points.reduce((s, p) => s + p[0], 0) / points.length;
+  const cy = fp.shape === "triangle" ? box(1) : points.reduce((s, p) => s + p[1], 0) / points.length;
   if (fp.diameter) {
     const r = (fp.diameter * MM) / 2;
     /** @type {Shape[]} */
@@ -524,12 +526,15 @@ const CROSS = 6; // crossing another wire
 const ON_TOP = 200; // lying along another wire, or through its bend: only when there's no other way
 const INSIDE = 6; // a step across a switch's outline costs this many beside it (D-384)
 const OUTLINE = 12; // a step on the outline's own line: crossed once to reach a lug, never run along (D-384)
+const BESIDE = 4; // a step right beside another wire running the same way: they'd read as one line
+const LUG_CLEAR = STEP * 0.55; // a lug's ring: other wires keep this far from its middle
 
 /**
- * @typedef {{boxes: Box[], lines: Array<[number, number, number, number]>, soft?: Box[]}} Obstacles
+ * @typedef {{boxes: Box[], lines: Array<[number, number, number, number]>, soft?: Box[], lugs?: Array<[number, number]>}} Obstacles
  *   what a wire keeps off (D-379): parts' bodies (board parts and off-board parts) and the
  *   leads of board parts, in board units; `soft`: switches' outlines, crossed only at a
- *   cost (D-384)
+ *   cost (D-384); `lugs`: every off-board lug, wired or not, whose ring only its own wires
+ *   cross
  */
 
 /**
@@ -541,7 +546,7 @@ const OUTLINE = 12; // a step on the outline's own line: crossed once to reach a
 export function wireObstacles(board, footprints, items) {
   const shapes = items.map(({ item, at }) => itemShape(item, at));
   /** @type {Obstacles} */
-  const found = { boxes: shapes.filter((x) => x.wall).map((x) => x.body), lines: [], soft: shapes.filter((x) => !x.wall).map((x) => x.body) };
+  const found = { boxes: shapes.filter((x) => x.wall).map((x) => x.body), lines: [], soft: shapes.filter((x) => !x.wall).map((x) => x.body), lugs: shapes.flatMap((x) => x.lugs.map((l) => /** @type {[number, number]} */ ([l.x, l.y]))) };
   for (const placed of board.parts) {
     const fp = footprints[placed.ref];
     if (!fp) continue;
@@ -609,12 +614,26 @@ function searchRoutes(lines, board, obstacles) {
     const [x, y] = xy(n);
     const over = x >= edge.left && x <= edge.right && y >= edge.top && y <= edge.bottom;
     const onLine = soft.some((b) => x >= b.x - 1 && x <= b.x + b.w + 1 && y >= b.y - 1 && y <= b.y + b.h + 1 && (Math.abs(x - b.x) <= 1 || Math.abs(x - b.x - b.w) <= 1 || Math.abs(y - b.y) <= 1 || Math.abs(y - b.y - b.h) <= 1));
-    dear[n] = onLine ? 3 : soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) ? 2 : over ? 1 : 0;
+    const ruled = MARGIN + 1; // the rulers' letters and numbers, a hole outside the margin: crossed, never run along
+    const onRuler = (Math.abs(y + ruled * STEP) < STEP / 2 && x >= edge.left && x <= edge.right) || (Math.abs(x + ruled * STEP) < STEP / 2 && y >= edge.top && y <= edge.bottom);
+    dear[n] = onLine || onRuler ? 3 : soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) ? 2 : over ? 1 : 0;
     if (over && x % STEP === 0 && y % STEP === 0) wall[n] = 1; // a hole: only a wire's own end goes in
     if (obstacles.boxes.some((b) => x > b.x - 1 && x < b.x + b.w + 1 && y > b.y - 1 && y < b.y + b.h + 1)) wall[n] = 1;
     if (obstacles.lines.some(([ax, ay, bx, by]) => nearSegment(x, y, ax, ay, bx, by) < 1.5)) wall[n] = 1;
   }
   for (const l of lines) if (l) wall[node(l.x1, l.y1)] = 1; // every lug a wall but to its own wires
+  // every lug's ring, wired or not: kept clear by other wires (the user, 2026-11-23: A1's wire ran over A2 and A3)
+  const lugAt = [...(obstacles.lugs ?? [])];
+  for (const l of lines) if (l) for (const [x, y] of l.loose ? [[l.x1, l.y1]] : l.hole ? [[l.x1, l.y1]] : [[l.x1, l.y1], [l.x2, l.y2]]) if (!lugAt.some(([a, b]) => a === x && b === y)) lugAt.push([x, y]);
+  const ring = new Int32Array(cols * rows).fill(-1);
+  lugAt.forEach(([x, y], k) => {
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const [px, py] = [x + di * GRID, y + dj * GRID];
+      const n = node(px, py);
+      if (Math.hypot(px - x, py - y) < LUG_CLEAR && n >= 0 && n < ring.length) ring[n] = k;
+    }
+  });
+  const lugOf = (/** @type {number} */ x, /** @type {number} */ y) => lugAt.findIndex(([a, b]) => a === x && b === y);
   /** which way the wires before use each point: 1 level, 2 upright, 3 both (a bend or a crossing) */
   const used = new Uint8Array(cols * rows);
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -632,7 +651,8 @@ function searchRoutes(lines, board, obstacles) {
     if (line.loose) return /** @type {Array<[number, number]>} */ ([[x1, y1], [x2, y2]]);
     const inside = (/** @type {number} */ x, /** @type {number} */ y) => soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h);
     const into = line.hole || inside(x2, y2) ? -1 : 3; // into another lug: from below, but a switch's from any side (D-384)
-    const path = search(node(x1, y1), node(x2, y2), into, inside(x1, y1));
+    const own = new Set([lugOf(x1, y1), line.hole ? -1 : lugOf(x2, y2)]);
+    const path = search(node(x1, y1), node(x2, y2), into, inside(x1, y1), own);
     /** @type {Array<[number, number]>} */
     let points = path ? path.map(xy) : [[x1, y1], [x1, y2], [x2, y2]]; // walled in: straight, as before
     points[0] = [x1, y1];
@@ -643,6 +663,12 @@ function searchRoutes(lines, board, obstacles) {
     }
     for (let k = 1; k < points.length; k++) take(points[k - 1], points[k]);
     return points;
+  }
+
+  /** Whether a wire before runs the same way (`level` 1 level, 2 upright) right beside grid point (i, j). @param {number} i @param {number} j @param {number} level */
+  function besideUsed(i, j, level) {
+    const [a, b] = level === 1 ? [[i, j - 1], [i, j + 1]] : [[i - 1, j], [i + 1, j]];
+    return [a, b].some(([u, v]) => u >= 0 && v >= 0 && u < cols && v < rows && (used[at(u, v)] & level) !== 0);
   }
 
   /** Mark the grid points from a to b (a level or upright run) as taken that way. @param {[number, number]} a @param {[number, number]} b */
@@ -661,8 +687,9 @@ function searchRoutes(lines, board, obstacles) {
    * inside a switch, D-384) to `goal` (arriving upward when `into` is 3), as grid points;
    * null when there's none.
    * @param {number} start @param {number} goal @param {number} into @param {boolean} anyWay
+   * @param {Set<number>} own the lugs this wire may cross the rings of: its own ends'
    */
-  function search(start, goal, into, anyWay) {
+  function search(start, goal, into, anyWay, own) {
     const [gi, gj] = [goal % cols, Math.floor(goal / cols)];
     const cost = new Float64Array(cols * rows * 4).fill(Infinity);
     const from = new Int32Array(cols * rows * 4).fill(-1);
@@ -673,7 +700,7 @@ function searchRoutes(lines, board, obstacles) {
       if (fi < 0 || fj < 0 || fi >= cols || fj >= rows) continue;
       const first = at(fi, fj);
       if (first === goal) return [start, goal];
-      if (wall[first]) continue;
+      if (wall[first] || (ring[first] >= 0 && !own.has(ring[first]))) continue;
       cost[first * 4 + e] = 1;
       from[first * 4 + e] = start * 4 + e;
       heap.push(first * 4 + e, 1 + Math.abs(gi - fi) + Math.abs(gj - fj));
@@ -688,12 +715,13 @@ function searchRoutes(lines, board, obstacles) {
         const [ni, nj] = [i + di, j + dj];
         if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
         const m = at(ni, nj);
-        if (m === goal ? into >= 0 && e !== into : wall[m]) continue;
+        if (m === goal ? into >= 0 && e !== into : wall[m] || (ring[m] >= 0 && !own.has(ring[m]))) continue;
         const level = e < 2 ? 1 : 2;
         let step = dear[m] === 3 ? OUTLINE : dear[m] === 2 ? INSIDE : dear[m] ? ON_BOARD : 1;
         if (e !== d) step += BEND;
         if (used[m] & level || (used[m] && e !== d)) step += ON_TOP;
         else if (used[m]) step += CROSS;
+        else if (besideUsed(ni, nj, level)) step += BESIDE;
         const c = cost[s] + step;
         const t = m * 4 + e;
         if (c >= cost[t]) continue;
@@ -890,6 +918,7 @@ export const BOARD_SETTINGS = /** @type {const} */ ([
   { key: "shorts", label: "Allow shorts while editing, shown red", on: true, acts: true, title: "Off: a move that makes a short is refused" },
   { key: "grow", label: "Auto-grow", on: true, acts: true, title: "The board grows to take in what's placed by its edge, and shrinks back. Off: it stays its size (the margin greyed); add or remove lines on the rulers" },
   { key: "seeThrough", label: "See-through", on: false, acts: true, title: "The parts faint, so the copper and the cuts under them show" },
+  { key: "mirror", label: "Mirror the copper side", on: false, acts: true, title: "The copper side turned over, as you hold the board to solder (D-390). Off: as seen from the parts side" },
   { key: "rats", label: "Ratsnest lines: all", on: true, acts: true, title: "The dashed lines between the pieces of each net still to join. Off: only the lines of the part selected or carried" },
   { key: "rails", label: "Highlight rails", on: false, acts: true, title: "The supply's copper (V+, V-) rose, ground's grey" },
 ]);
@@ -977,11 +1006,13 @@ export function legPattern(fp, pose) {
   if (fp.shape === "dip") {
     const half = n / 2;
     at = fp.legs.map((_, i) => (i < half ? [0, i] : [fp.row_holes, n - 1 - i]));
+  } else if (fp.shape === "triangle") { // a trimmer (D-393): 1 above 3, the wiper a hole back to the left, as footprints.TRIANGLE
+    at = [[1, 0], [0, 1], [1, 2]];
   } else {
     const step = fp.shape === "axial" && pose.standing ? fp.stand : pose.span;
     at = fp.legs.map((_, i) => [0, i * step]);
   }
-  const names = pose.flipped && fp.shape !== "dip" ? [...fp.legs].reverse() : fp.legs;
+  const names = pose.flipped && fp.shape !== "dip" ? [...fp.legs].reverse() : fp.legs; // a triangle's ends 1 and 3 swapped
   const turn = (/** @type {[number, number]} */ [x, y]) => /** @type {[number, number]} */ ([-y, x]);
   return names.map((leg, i) => {
     let p = at[i];

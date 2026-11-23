@@ -96,6 +96,31 @@ class Build(_Strict):
     parts: list[str]
 
 
+class BoardBenchmark(_Strict):
+    """A published stripboard layout of the same circuit (P6g, D-391): its link and the
+    counts the agent took from the drawing at the user's request (D-391; the drawing itself
+    is never kept): the benchmark for a better layout (P6h). `known_gap` says why a board
+    of ours may be bigger."""
+
+    title: str
+    url: str
+    snapshot: str | None = None
+    columns: int | None = None
+    strips: int | None = None
+    cuts: int | None = None
+    links: int | None = None
+    counted: datetime.date | None = None  # when the person counted them
+    note: str | None = None
+    known_gap: str | None = None
+    pending: str | None = None  # what's missing before it can be compared
+
+    @model_validator(mode="after")
+    def _counted(self) -> "BoardBenchmark":
+        if self.pending is None and None in (self.columns, self.strips, self.counted):
+            raise ValueError(f"The board benchmark {self.url} needs its counts or `pending`.")
+        return self
+
+
 class Expected(_Strict):
     circuit: str
     source: Source
@@ -103,6 +128,7 @@ class Expected(_Strict):
     checks: list[Check]
     omitted: list[Omitted] = Field(default_factory=list)
     build: Build | None = None
+    stripboard: BoardBenchmark | None = None
 
 
 def load_expected(path: Path) -> Expected:

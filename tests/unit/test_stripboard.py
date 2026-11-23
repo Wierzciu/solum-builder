@@ -1,6 +1,7 @@
 """The stripboard board model, footprints and check (D-367): hand-made layouts, good and
 broken, each broken one refused with a sentence naming its fault."""
 
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from hypothesis import strategies as st
 from solum.circuit.build import CircuitBuilder
 from solum.circuit.connectivity import connect
 from solum.circuit.io import load_circuit
-from solum.circuit.schema import Circuit
+from solum.circuit.schema import Capacitor, Circuit, Trimmer
 from solum.circuit.switches import KINDS
 from solum.guides import footprint_table
 from solum.models import load_models
@@ -20,22 +21,31 @@ from solum.stripboard.board import (
     BoardError,
     Layout,
     Link,
+    Placed,
     hole_name,
     layout_data,
     layout_from_data,
     parse_hole,
     segments,
 )
-from solum.stripboard.check import Checked, check_layout, joined_groups, stripboard_nets
+from solum.stripboard.check import (
+    Checked,
+    check_layout,
+    joined_groups,
+    outline_warnings,
+    stripboard_nets,
+)
 from solum.stripboard.footprints import (
     board_parts,
     body_holes,
     dip_legs,
     drawing_data,
     leg_problem,
+    one_board_part,
+    triangle_legs,
 )
 from solum.stripboard.offboard import default_spots, lug_nets, off_board_items, switch_drawing
-from solum.stripboard.wiring import WiringError, wire_for_me
+from solum.stripboard.wiring import WiringError, pad_cost, wire_for_me
 from solum.yamlio import load_yaml
 
 REPO = Path(__file__).resolve().parents[2]
@@ -275,7 +285,7 @@ def test_a_leg_one_strip_off_is_refused() -> None:
 def test_a_missing_link_is_refused() -> None:
     result = check(edited(links=[["B1", "B8"]]))
     assert result.faults == [
-        "C3's + leg at H2 and R2's leg at J8 aren't connected on the board, but the circuit "
+        "C3's + leg at G2 and R2's leg at J8 aren't connected on the board, but the circuit "
         "joins them."
     ]
 
@@ -321,8 +331,8 @@ def test_missing_extra_and_off_board_parts_are_named() -> None:
 
 
 def test_two_legs_in_a_hole_or_a_body_over_a_leg_is_refused() -> None:
-    shared = check(edited(parts={"R3": {"1": "H3", "2": "G2"}}))
-    assert "R3 and C3 share hole H3." in shared.faults
+    shared = check(edited(parts={"R3": {"1": "G3", "2": "H2"}}))
+    assert "R3 and C3 share hole G3." in shared.faults
     covered = check(edited(parts={"R2": {"1": "C4", "2": "C8"}, "R1": {"1": "C8", "2": "C4"}}))
     assert any("share hole" in f for f in covered.faults)
     over = check(edited(parts={"Q1": {"E": "C5", "B": "C6", "C": "C7"}}))  # under R1's body
@@ -421,14 +431,80 @@ def test_every_starter_but_the_kit_builds_gets_its_footprints() -> None:
         _, problems = board_parts(load_circuit(path), MODELS, TABLE)
         if "aion" not in path.stem:
             assert problems == [], path.stem
-    _, smd = board_parts(load_circuit(LIBRARY / "starters" / "boss-bd2-aion.json"), MODELS, TABLE)
-    assert smd[0] == (
+    bd2 = load_circuit(LIBRARY / "starters" / "boss-bd2-aion.json").with_part("Q1", adapter=False)
+    _, smd = board_parts(bd2, MODELS, TABLE)
+    assert smd == [
         "Q1's 2SK209-GR is surface-mount (SC-59 (S-MINI)): it can't go on a stripboard. "
-        "Choose a through-hole model for it."
-    )
+        "Choose a through-hole model for it, or put it on a TO-92 adapter (its Mounting)."
+    ]
     path = LIBRARY / "starters" / "marshall-bluesbreaker-aion.json"
     _, dip = board_parts(load_circuit(path), MODELS, TABLE)
     assert dip == ["There's no board size for DIP switches (SW3) yet."]  # once, not per pole
+
+
+def test_a_trimmer_is_a_triangle_unless_set_in_line() -> None:
+    """D-393: a trimmer is the Bourns 3362P, legs 1 and 3 two holes apart and the wiper a
+    hole back between them, turned any way; its ends may be swapped (the part isn't
+    mirrored, its outer legs just go on the other nets: it turns the other way to set,
+    fine for a trimmer, the user). Its 6.60 × 6.99 mm body covers the hole between 1 and 3
+    and the two beside the wiper. Set `inline` it's the 3296W, three legs in a row."""
+    tr = Trimmer(ref="TR1", pos=(0, 0), type="trimmer", value=10e3)
+    triangle = one_board_part(tr, MODELS, TABLE)
+    assert triangle.footprint.shape == "triangle" and triangle.legs == ("1", "2", "3")
+    own = triangle_legs(0, (4, 2))
+    assert own == {"1": (5, 2), "2": (4, 3), "3": (5, 4)}
+    assert triangle_legs(1) == {"1": (2, 1), "2": (1, 0), "3": (0, 1)}  # a quarter clockwise
+    assert triangle_legs(0, (4, 2), swapped=True) == {"1": (5, 4), "2": (4, 3), "3": (5, 2)}
+    assert all(
+        leg_problem(triangle, triangle_legs(t, (3, 3), m), False) is None
+        for t in range(4)
+        for m in (False, True)
+    )
+    in_line = {"1": (4, 2), "2": (4, 3), "3": (4, 4)}
+    assert leg_problem(triangle, in_line, False) == (
+        "TR1's legs: 1 and 3 two holes apart in a line, the wiper (2) a hole back from the "
+        "middle of them."
+    )
+    assert body_holes(triangle, own, False) == {(5, 3), (4, 2), (4, 4)}
+    inline = one_board_part(tr.model_copy(update={"style": "inline"}), MODELS, TABLE)
+    assert inline.footprint.shape == "inline" and inline.footprint.length == 9.53
+
+
+def test_bodies_touching_between_holes_or_hanging_off_the_edge_are_warned() -> None:
+    """D-394: a triangle trimmer (legs B1, A2, B3; body 6.99 mm across, to 4.77 mm) and a
+    100 µF electrolytic (6.3 mm, legs D1, D2; its edge at 4.47 mm) share no hole, so the
+    board passes, but their outlines touch by 0.3 mm: a warning. A body more than half a
+    hole past the board's edge is warned too; one hole further apart, nothing."""
+    tr = one_board_part(Trimmer(ref="TR1", pos=(0, 0), type="trimmer", value=10e3), MODELS, TABLE)
+    cap = Capacitor(ref="C1", pos=(0, 0), type="capacitor", value=100e-6, kind="electrolytic")
+    c1 = one_board_part(cap, MODELS, TABLE)
+    board = {"TR1": tr, "C1": c1}
+    trimmer = Placed("TR1", tuple(triangle_legs(0, (0, 0)).items()))
+
+    def at(column: int, columns: int) -> list[str]:
+        cap_at = Placed("C1", (("1", (column, 0)), ("2", (column, 1))))
+        return outline_warnings(Layout(columns, 3, (trimmer, cap_at)), board)
+
+    assert at(3, 6) == [
+        "TR1 and C1's bodies touch between the holes: one would have to stand taller. Move "
+        "one a hole further away if you can."
+    ]
+    assert at(4, 6) == []
+    assert at(4, 5) == [  # C1's edge at 13.31 mm, the board's at 4.5 holes, 11.43 mm
+        "C1's body hangs 1.9 mm past the board's edge: check it clears the enclosure, or "
+        "move it in."
+    ]
+
+
+def test_a_surface_mount_transistor_on_an_adapter_takes_the_to92_footprint() -> None:
+    """D-392: the BD-2 (Aion)'s 2SK209s on TO-92 adapters, as Aion's kit builds them: the
+    table's TO-92, legs D-S-G (Aion's adapter, the J201's)."""
+    bd2 = load_circuit(LIBRARY / "starters" / "boss-bd2-aion.json")
+    found, problems = board_parts(bd2, MODELS, TABLE)
+    q1 = found["Q1"]
+    assert problems == [] and q1.footprint.package == "TO-92"
+    assert q1.legs == ("D", "S", "G")
+    assert q1.pins == {"D": ("Q1", "D"), "S": ("Q1", "S"), "G": ("Q1", "G")}
 
 
 # --- Wire it for me (D-375) ----------------------------------------------------------
@@ -446,6 +522,18 @@ def test_wire_it_for_me_wires_every_lug_to_a_board_that_passes() -> None:
     assert wire_for_me(bare, RANGEMASTER, MODELS, TABLE) == wired
     with pytest.raises(WiringError, match="Nothing to wire"):
         wire_for_me(wired, RANGEMASTER, MODELS, TABLE)
+
+
+def test_a_pad_is_chosen_by_a_wire_s_way_in_not_a_straight_line() -> None:
+    """The user, 2026-11-23 (J1 S's wire ran across the board to a pad inside it): from a
+    lug above a 10 × 8 board at (5, -6), a hole on strip 2 straight below (7 holes away) is
+    dearer than the corner hole A1 (7.8 away): a wire to it goes 5.5 to the edge, then 1.5
+    in at 3 each (10), one to A1 7.4 to the edge and 0.5 in (8.9)."""
+    lug = (5.0, -6.0)
+    assert pad_cost((5, 1), lug, 10, 8) == pytest.approx(5.5 + 3 * 1.5)
+    assert pad_cost((0, 0), lug, 10, 8) == pytest.approx(math.hypot(5, 5.5) + 3 * 0.5)
+    assert pad_cost((0, 0), lug, 10, 8) < pad_cost((5, 1), lug, 10, 8)
+    assert pad_cost((9, 4), (12.0, 4.0), 10, 8) == pytest.approx(2.5 + 3 * 0.5)  # in from the right
 
 
 def test_wire_it_for_me_leaves_a_net_not_on_the_board() -> None:
