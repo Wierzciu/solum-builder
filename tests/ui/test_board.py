@@ -22,16 +22,23 @@ pytestmark = pytest.mark.ui
 _saves = itertools.count(1)
 
 
-def open_with_board(page: Page, base_url: str, board: dict[str, Any] | None) -> None:
-    """The Rangemaster starter saved as a circuit carrying `board`, and opened."""
+def open_with_board(page: Page, base_url: str, board: dict[str, Any] | None,
+                    starter: str = "dallas-rangemaster") -> None:  # fmt: skip
+    """The Rangemaster starter (or `starter`) saved as a circuit carrying `board`, and
+    opened."""
     page.goto(base_url)
-    circuit = page.request.get(f"{base_url}api/starters/dallas-rangemaster").json()["circuit"]
+    circuit = page.request.get(f"{base_url}api/starters/{starter}").json()["circuit"]
     if board is not None:
         circuit["stripboard"] = board
     made = {"circuit": circuit, "name": f"Rangemaster board {next(_saves)}"}
     saved = page.request.post(f"{base_url}api/circuits", data=made)
     assert saved.ok, saved.text()
     open_circuit(page, base_url, "circuit/" + saved.json()["circuit"]["id"])
+
+
+def expect_matches(page: Page) -> None:
+    """Nothing to warn about: every net done, no fault, every placement limit met."""
+    expect(page.locator("#board-warnings-body")).to_contain_text("The board matches the circuit.")
 
 
 def show_board(page: Page) -> None:
@@ -55,7 +62,7 @@ def test_the_board_view_shows_the_board_and_its_own_panes(page: Page, base_url: 
     # every part placed, every net joined: the progress check says so
     expect(page.locator("#board-tray-body")).to_contain_text("Every part is on the board.")
     expect(page.locator("#board-nets-body .board-progress")).to_have_text("All 8 nets done.")
-    expect(page.locator("#board-warnings-body")).to_contain_text("The board matches the circuit.")
+    expect_matches(page)
     # the small schematic is drawn in its pane
     expect(page.locator("#board-sheet .part[data-ref='Q1']")).to_have_count(1)
 
@@ -334,8 +341,9 @@ def test_parts_are_placed_turned_moved_cut_and_linked_by_hand(
     drag_to(page, (box["x"] + 20, box["y"] + box["height"] / 2), hole_point(page, 9, 5))  # J6
     r2 = page.locator("#board .board-part[data-ref='R2']")
     expect(r2).to_have_count(1)
-    warnings = page.locator("#board-warnings-body")
-    expect(warnings).to_have_text("The board matches the circuit.")
+    # R2 biases Q1's base, so no limit keeps it by the base (D-400 amended): no warning
+    expect(page.locator("#board-warnings-body")).to_contain_text("The board matches the circuit.")
+    expect(page.locator("#board-warnings-body li.fault")).to_have_count(0)
     expect(page.locator("#dirty")).to_be_visible()
     page.keyboard.press("Control+z")
     expect(r2).to_have_count(0)
@@ -356,10 +364,10 @@ def test_parts_are_placed_turned_moved_cut_and_linked_by_hand(
     expect(page.locator("#refusal")).to_be_visible()
     expect(page.locator("#refusal .refusal-text")).to_contain_text("Shorts are off in Settings.")
     page.locator("#board-settings-body input[data-setting='shorts']").check()
-    # moved by dragging its body: J to L
-    drag_to(page, hole_point(page, 9, 5), hole_point(page, 11, 5))
-    expect(r2.locator(".leg").first).to_have_attribute("cx", "110")
-    expect(warnings).to_have_text("The board matches the circuit.")
+    # moved by dragging its body: J to H, by Q1's base, nothing left to warn about
+    drag_to(page, hole_point(page, 9, 5), hole_point(page, 7, 5))
+    expect(r2.locator(".leg").first).to_have_attribute("cx", "70")
+    expect_matches(page)
     # a cut made and mended with the Cuts tool, a link laid with the Links tool
     page.keyboard.press("c")
     page.mouse.click(*hole_point(page, 9, 4))
@@ -369,7 +377,7 @@ def test_parts_are_placed_turned_moved_cut_and_linked_by_hand(
     page.keyboard.press("k")
     drag_to(page, hole_point(page, 9, 1), hole_point(page, 9, 7))  # J2 to J8, both GND
     expect(page.locator("#board .board-link")).to_have_count(3)
-    expect(warnings).to_have_text("The board matches the circuit.")
+    expect_matches(page)
     page.keyboard.press("Escape")
     expect(page.locator("#board-tools button[data-tool='parts']")).to_have_attribute(
         "aria-pressed", "true"
@@ -406,8 +414,7 @@ def test_an_off_board_part_is_put_beside_the_board_and_wired(
     for end, hole in (("VR1.1", (3, 0)), ("VR1.2", (0, 6)), ("VR1.3", (0, 4))):  # D1, A7, A5
         drag_to(page, lug_point(page, end), hole_point(page, *hole))
     expect(wires).to_have_count(9)  # the six kept, and VR1's three
-    warnings = page.locator("#board-warnings-body")
-    expect(warnings).to_have_text("The board matches the circuit.")
+    expect_matches(page)
     expect(page.locator("#board-size-text")).to_contain_text("9 wires")
     # left loose from the wire's menu: still to do; undone
     last = wires.last.locator(".far-end")
@@ -426,7 +433,7 @@ def test_an_off_board_part_is_put_beside_the_board_and_wired(
     # Wire it for me: VR1 out beside the board again and wired, one undo step
     page.locator("#board-wire").click()
     expect(vr1).to_have_count(1)
-    expect(warnings).to_have_text("The board matches the circuit.")
+    expect_matches(page)
     expect(page.locator("#board-wire")).to_be_hidden()
     page.keyboard.press("Control+z")
     expect(vr1).to_have_count(0)
@@ -518,7 +525,7 @@ def test_a_part_placed_finishes_its_nets_and_the_board_is_saved_as_it_was(
     c3 = page.locator("#board .board-part[data-ref='C3']")
     expect(c3).to_have_count(1)
     expect(progress).to_have_text("All 8 nets done.")
-    expect(warnings).to_have_text("The board matches the circuit.")
+    expect_matches(page)
     # flipped: its legs swap strips, named as it's made
     # by its leg at G3, under a wire across the board: the wire doesn't take the click
     page.mouse.click(*hole_point(page, 6, 2))
@@ -526,7 +533,7 @@ def test_a_part_placed_finishes_its_nets_and_the_board_is_saved_as_it_was(
     page.keyboard.press("f")
     expect(warnings).to_contain_text("C3 is the wrong way round")
     page.keyboard.press("Control+z")
-    expect(warnings).to_have_text("The board matches the circuit.")
+    expect_matches(page)
     # saved, reloaded: the board as it was
     page.keyboard.press("Control+s")
     expect(page.locator("#dirty")).to_be_hidden()
@@ -539,7 +546,7 @@ def test_a_part_placed_finishes_its_nets_and_the_board_is_saved_as_it_was(
         "12 × 9 holes (30 × 23 mm), 1 cut, 2 links, 9 wires"
     )
     expect(progress).to_have_text("All 8 nets done.")
-    expect(warnings).to_have_text("The board matches the circuit.")
+    expect_matches(page)
 
 
 def test_the_guidance_marks_suggests_and_says_what_is_next(page: Page, base_url: str) -> None:
@@ -585,6 +592,25 @@ def test_the_guidance_marks_suggests_and_says_what_is_next(page: Page, base_url:
     expect(page.locator("#board .ghost .mark")).not_to_have_count(0)
     page.keyboard.press("Escape")
     expect(page.locator("#board .ghost .mark")).to_have_count(0)
+
+
+def test_a_part_kept_by_a_placed_pin_is_next_and_marked_by_it(page: Page, base_url: str) -> None:
+    """D-400: the Rangemaster with only Q1 placed (E3, B4, C5): the tray names C1 next, on
+    the high-gain stage's input, saying why; carried, it's marked only by Q1's base, within
+    2 holes either side on its strip (it alone is kept there, R1 and R2 biasing it: C4, D4,
+    F4, G4; its other leg's net isn't on the board yet)."""
+    board = load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml")
+    board["parts"] = {"Q1": board["parts"]["Q1"]}
+    board["standing"], board["cuts"], board["links"], board["wires"] = [], [], [], []
+    open_with_board(page, base_url, board)
+    show_board(page)
+    expect(page.locator("#board-tray-body .board-next")).to_contain_text(
+        "Next: C1, by Q1's base: the high-gain stage's input."
+    )
+    page.locator("#board-tray-body .board-next").click()
+    page.mouse.move(*hole_point(page, 9, 7))
+    expect(page.locator("#board .ghost .mark")).to_have_count(4)
+    page.keyboard.press("Escape")
 
 
 def test_the_realistic_drawing_see_through_and_the_copper_side(page: Page, base_url: str) -> None:
@@ -766,6 +792,11 @@ def test_the_kept_board_is_exported_drawn_by_the_board_canvas(page: Page, base_u
         assert any(n.endswith("/stripboard.pdf") for n in z.namelist())
 
 
+# A starter whose Start board Tidy up makes smaller (the Rangemaster's no longer: its input
+# limit keeps C1 by Q1's base, D-400 amended).
+TIDIES = "tone-bender-mk2"
+
+
 def layout(page: Page, choice: str, compact: bool | None = None) -> None:
     """Open *Layout…* in the board's Settings, pick `choice` (and set *Make the board
     compact*) and press Continue: the confirmation is then showing."""
@@ -786,10 +817,11 @@ def test_the_layout_dialog_starts_fills_and_tidies_each_confirmed_and_one_undo_s
     """P6h2: *Layout…* in the board's Settings opens the choices; on an empty board Fill the
     rest and Tidy up are greyed with the reason and Start a board is chosen. Each choice
     is confirmed, saying what will happen; each is one undo step. Once parts are placed
-    nothing is chosen at first and Continue waits for a choice. Start a board without
-    *Make the board compact* lays out 10 columns, Tidy up makes them 9 (D-388); Start a
-    board on a board with parts names what it replaces, and Cancel changes nothing."""
-    open_with_board(page, base_url, None)
+    nothing is chosen at first and Continue waits for a choice. On the Tone Bender MK2
+    Start a board without *Make the board compact* lays out 34 columns, Tidy up makes them
+    31 (D-388); Start a board on a board with parts names what it replaces, and Cancel
+    changes nothing."""
+    open_with_board(page, base_url, None, TIDIES)
     page.locator("#board-button").click()
     page.locator("#board-settings summary").click()
     page.locator("#board-layout").click()
@@ -801,14 +833,14 @@ def test_the_layout_dialog_starts_fills_and_tidies_each_confirmed_and_one_undo_s
     expect(dialog.locator(".layout-choice[data-layout='start'] input")).to_be_checked()
     dialog.locator("#layout-compact").set_checked(False)
     dialog.locator("button[data-answer='go']").click()
-    expect(page.locator(".ask-text")).to_contain_text("Lays out the whole board: 8 parts")
+    expect(page.locator(".ask-text")).to_contain_text("Lays out the whole board: 14 parts")
     page.locator(".ask-buttons button[data-answer='layout']").click()
     size = page.locator("#board-size-text")
-    expect(size).to_contain_text("10 × 9 holes")
+    expect(size).to_contain_text("34 × 13 holes")
     layout(page, "tidy")
     expect(page.locator(".ask-text")).to_contain_text("make the board smaller")
     page.locator(".ask-buttons button[data-answer='layout']").click()
-    expect(size).to_contain_text("9 × 9 holes")
+    expect(size).to_contain_text("31 × 13 holes")
     page.locator("#board-layout").click()  # parts placed: nothing chosen, Continue waits
     expect(dialog.locator("input[name='layout']:checked")).to_have_count(0)
     expect(dialog.locator("button[data-answer='go']")).to_be_disabled()
@@ -816,15 +848,15 @@ def test_the_layout_dialog_starts_fills_and_tidies_each_confirmed_and_one_undo_s
     dialog.locator(".layout-choice[data-layout='start'] input").check()
     dialog.locator("button[data-answer='go']").click()
     expect(page.locator(".ask-text")).to_contain_text(
-        "This replaces everything on the board: 8 parts,"
+        "This replaces everything on the board: 14 parts,"
     )
     expect(page.locator(".ask-buttons button[data-answer='layout']")).to_have_text(
         "Replace the board"
     )
     page.locator(".ask-buttons button[data-answer='cancel']").click()
-    expect(size).to_contain_text("9 × 9 holes")
+    expect(size).to_contain_text("31 × 13 holes")
     page.keyboard.press("Control+z")  # the tidy: one step
-    expect(size).to_contain_text("10 × 9 holes")
+    expect(size).to_contain_text("34 × 13 holes")
     page.keyboard.press("Control+z")  # the layout: one step
     expect(size).to_have_text("Empty board")
 
@@ -832,16 +864,16 @@ def test_the_layout_dialog_starts_fills_and_tidies_each_confirmed_and_one_undo_s
 def test_the_tray_shows_the_placed_parts_on_request(page: Page, base_url: str) -> None:
     """D-387: once laid out, the tray lists the placed parts (on the board and beside it)
     under *Show placed*, above its lists; a click selects one."""
-    open_with_board(page, base_url, None)
+    open_with_board(page, base_url, None, TIDIES)
     page.locator("#board-button").click()
     layout(page, "start", compact=True)
     page.locator(".ask-buttons button[data-answer='layout']").click()
-    expect(page.locator("#board-size-text")).to_contain_text("9 × 9 holes")
+    expect(page.locator("#board-size-text")).to_contain_text("31 × 13 holes")
     toggle = page.locator("#board-tray .placed-toggle")
-    expect(toggle).to_have_text("▸ Show placed (12)")  # 8 on the board, 4 beside it
+    expect(toggle).to_have_text("▸ Show placed (19)")  # 14 on the board, 5 beside it
     expect(page.locator("#board-tray li.placed")).to_have_count(0)
     toggle.click()
-    expect(page.locator("#board-tray li.placed")).to_have_count(12)
+    expect(page.locator("#board-tray li.placed")).to_have_count(19)
     on_list = page.locator("#board-tray .tray-section[data-where='board']")
     assert toggle.bounding_box()["y"] < on_list.bounding_box()["y"]  # above the lists
     page.locator("#board-tray li.placed[data-ref='R1']").click()
@@ -853,7 +885,7 @@ def test_the_layout_says_what_its_doing_while_it_works(page: Page, base_url: str
     and can't be pressed again, and the working bar shows."""
     held: list[Route] = []
     page.route("**/api/stripboard/tidy", lambda route: held.append(route))
-    open_with_board(page, base_url, None)
+    open_with_board(page, base_url, None, TIDIES)
     page.locator("#board-button").click()
     layout(page, "start", compact=True)
     page.locator(".ask-buttons button[data-answer='layout']").click()
@@ -862,7 +894,7 @@ def test_the_layout_says_what_its_doing_while_it_works(page: Page, base_url: str
     expect(button).to_be_disabled()
     expect(page.locator("#board-working")).to_be_visible()
     held[0].continue_()
-    expect(page.locator("#board-size-text")).to_contain_text("9 × 9 holes")
+    expect(page.locator("#board-size-text")).to_contain_text("31 × 13 holes")
     expect(page.locator("#board-working")).to_be_hidden()
     expect(button).to_have_text("Layout…")
 
@@ -955,3 +987,67 @@ def test_an_overlap_is_noted_dismissed_brought_back_and_marked(
     page.get_by_role("button", name="Save").click()
     expect(page.locator("form.popup .error")).to_have_text("There's no R9 among the board's parts.")
     browser_errors.clear()  # that refusal's 422
+
+
+def test_build_a_full_layout_reviewed_tried_again_kept_and_undone(
+    page: Page, base_url: str
+) -> None:
+    """D-399: *Build a full layout* on the Rangemaster's empty board, Quick, its time
+    worked out; the running window, then the review bar: After | Before | Both (top and
+    bottom), Try another and back to try 1, Keep try 1 (one undo step). Then Thorough,
+    stopped early: its best kept for the review, and the old board kept."""
+    open_with_board(page, base_url, None)
+    page.locator("#board-button").click()
+    page.locator("#board-settings summary").click()
+    page.locator("#board-layout").click()
+    dialog = page.locator("#layout-dialog")
+    expect(dialog.locator("input[name='layout-speed']").first).to_be_disabled()
+    dialog.locator(".layout-choice[data-layout='full'] input").check()
+    dialog.locator("input[name='layout-speed'][value='quick']").check()
+    expect(dialog.locator(".layout-time[data-time='quick']")).not_to_contain_text("Working out")
+    expect(dialog).to_contain_text("Check it, and adjust it if you need to")
+    dialog.locator("button[data-answer='go']").click()
+    expect(page.locator(".ask-text")).to_contain_text("you can stop early")
+    page.locator(".ask-buttons button[data-answer='layout']").click()
+    review = page.locator(".compact-review")
+    expect(review).to_be_visible(timeout=90_000)
+    expect(page.locator(".compact-run")).to_be_hidden()
+    expect(review.locator(".compact-figures")).to_contain_text("→ After")
+    expect(review.locator("[data-review='old']")).to_have_text("Keep the base board")
+    expect(page.locator("#board-tray")).to_have_js_property("inert", True)
+    review.locator("[data-mode='both']").click()
+    expect(page.locator("#canvas-body")).to_have_class(re.compile("split"))
+    expect(page.locator(".board-before")).to_be_visible()
+    expect(page.locator(".compact-title.bottom")).to_contain_text("After, try 1")
+    review.locator("[data-mode='before']").click()
+    expect(page.locator(".board-before")).to_be_hidden()
+    review.locator("[data-mode='after']").click()
+    review.locator("[data-review='another']").click()
+    expect(review.locator(".compact-try")).to_have_text("Try 2 of 2", timeout=90_000)
+    review.locator("[data-try='prev']").click()
+    expect(review.locator(".compact-try")).to_have_text("Try 1 of 2")
+    review.locator("[data-review='keep']").click()
+    expect(review).to_be_hidden()
+    expect(page.locator("#board .board-part")).to_have_count(8)
+    expect(page.locator("#board-tray")).to_have_js_property("inert", False)
+    kept = page.locator("#board-size-text").inner_text()
+    page.keyboard.press("Control+z")
+    expect(page.locator("#board .board-part")).to_have_count(0)
+    page.keyboard.press("Control+Shift+z")
+    expect(page.locator("#board-size-text")).to_have_text(kept)
+    # Thorough, stopped early: the best so far wired and checked, then the old board kept
+    page.locator("#board-layout").click()
+    dialog.locator(".layout-choice[data-layout='full'] input").check()
+    dialog.locator("input[name='layout-speed'][value='thorough']").check()
+    dialog.locator("button[data-answer='go']").click()
+    expect(page.locator(".ask-text")).to_contain_text("replaces everything on the board: 8 parts")
+    page.locator(".ask-buttons button[data-answer='layout']").click()
+    stop = page.locator(".compact-run [data-run='stop']")
+    expect(stop).to_be_enabled(timeout=60_000)
+    expect(page.locator("#board")).to_have_class(re.compile("dimmed"))
+    stop.click()
+    expect(review).to_be_visible(timeout=30_000)
+    expect(review.locator("[data-review='old']")).to_have_text("Keep the old board")
+    review.locator("[data-review='old']").click()
+    expect(review).to_be_hidden()
+    expect(page.locator("#board-size-text")).to_have_text(kept)
