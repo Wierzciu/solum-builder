@@ -39,8 +39,10 @@ import { latestOnly } from "../state.js";
 import { remember, remembered } from "../storage.js";
 import { boardCanvas } from "./canvas.js";
 import { chooseLayout } from "./layout-dialog.js";
+import { boardNotes } from "./board-notes.js";
 import { needsCard } from "./needs.js";
-import { BOARD_SETTINGS, boardRefOf, choiceMark, chosenMarks, drawnBoard, firstPose, holeName, isOut, itemRefs, legNeeds, legsAt, legsData, lineChanges, linkFrom, lugPlaces, lugWords as lugWordsOf, offBoardDrawing, markedHoles, runAt, middleOf, moveWords, netWords, netsLine, netsOf, offBoardRows, partsOnNet, placedRows, posed, poseOf, readBoard, readSettings, shownHoles, sizeLine, spotFor, staleLine, suggestionsLine, trayGroups, trayRows, whereMove, wireLine, wireObstacles, wireRoutes } from "./board-logic.js";
+import { openForm } from "../editor/form.js";
+import { BOARD_SETTINGS, EDGE, overlapKey, overlapMarks, overlapParts, boardRefOf, choiceMark, chosenMarks, drawnBoard, firstPose, holeName, isOut, itemRefs, legNeeds, legsAt, legsData, lineChanges, linkFrom, lugPlaces, lugWords as lugWordsOf, offBoardDrawing, markedHoles, runAt, middleOf, moveWords, netWords, netsLine, netsOf, offBoardRows, partsOnNet, placedRows, posed, poseOf, readBoard, readSettings, shownHoles, sizeLine, spotFor, staleLine, suggestionsLine, trayGroups, trayRows, whereMove, wireLine, wireObstacles, wireRoutes } from "./board-logic.js";
 
 /**
  * @typedef {import("../schematic/render.js").Selection} Selection
@@ -66,12 +68,14 @@ import { BOARD_SETTINGS, boardRefOf, choiceMark, chosenMarks, drawnBoard, firstP
  *   editBoard: (stripboard: any, label: string) => void,
  *   editPart: (ref: string, patch: Record<string, unknown>, stripboard: any, label: string) => void,
  *   refuse: (message: string) => void,
+ *   marks: () => boolean,
  * }} BoardApp
  *   `resting`: what's selected when the empty canvas is clicked (the root's own choice);
  *   `shown`: told when the view changes, so the root sets its hint (`hint`) and buttons;
  *   `editBoard`: the circuit with this board (its plain form; null: none, Settings' *Remove
  *   board*, D-370), one undo step; `editPart`: a part's properties changed and this board
- *   with it (a trimmer's style, D-393), one undo step
+ *   with it (a trimmer's style, D-393), one undo step; `marks`: View → Problem marks is on
+ *   (the board's overlaps marked too, D-398)
  */
 
 const BUTTON_TITLE = "Lay out a stripboard for this circuit";
@@ -99,6 +103,12 @@ export function boardView(host, app) {
   const workingBar = /** @type {HTMLProgressElement} */ ($("board-working"));
   const acceptButton = /** @type {HTMLButtonElement} */ ($("board-accept"));
   const needs = needsCard($("board-needs"));
+  const notesPane = boardNotes($("board-notes-body"), $("board-notes-count"), {
+    notes: () => progress?.notes ?? [],
+    known: () => [...Object.keys(progress?.footprints ?? {}), ...(progress?.items ?? []).map((i) => i.ref)],
+    host,
+    edit: (change, label) => boardEdit(change, label, true),
+  });
   const button = $("board-button");
   let active = false;
   let fitted = false;
@@ -137,6 +147,7 @@ export function boardView(host, app) {
 
   const canvas = boardCanvas(svg, {
     onClick: (spot) => {
+      if (spot.mark) return openWarning(spot.mark);
       if (spot.suggest) return void acceptOne(spot.suggest);
       if (tool === "cuts") return void toggleCut(spot.hole);
       if (spot.ref) selectPart(spot.ref);
@@ -642,16 +653,21 @@ export function boardView(host, app) {
 
   /**
    * One hand edit of the board (D-374), made by the server with the editor's settings and
-   * applied as one undo step; refused, its sentence shown.
-   * @param {Record<string, unknown>} change @param {string} label
+   * applied as one undo step; refused, its sentence shown on the bar (`quiet`: only
+   * returned, for a form to say).
+   * @param {Record<string, unknown>} change @param {string} label @param {boolean} [quiet]
+   * @returns {Promise<string | null>} the refusal, or null when made
    */
-  async function boardEdit(change, label) {
+  async function boardEdit(change, label, quiet = false) {
     try {
       const { stripboard, shift } = await postJson("api/stripboard/edit", { circuit: app.circuit(), ...change, grow: settings.grow, shorts: settings.shorts });
       if (shift[0] || shift[1]) canvas.shift(shift);
       app.editBoard(stripboard, label);
+      return null;
     } catch (err) {
-      app.refuse(/** @type {Error} */ (err).message);
+      const message = /** @type {Error} */ (err).message;
+      if (!quiet) app.refuse(message);
+      return message;
     }
   }
 
@@ -833,6 +849,7 @@ export function boardView(host, app) {
     canvas.draw(drawn, progress?.footprints ?? {}, circuit, {
       fit: !fitted, values: settings.values, rulers: started, fixed: !settings.grow, shorted: checked === circuit ? progress?.shorted ?? [] : [], rails: settings.rails && checked === circuit ? progress?.rails ?? {} : {}, off: offBoardDrawing(progress, board), seeThrough: settings.seeThrough, chosen: chosenMarks(progress),
       guide: guide ? { rats: guide.ratsnest, cuts: guide.cuts, links: guide.links } : undefined,
+      marks: app.marks() && checked === circuit ? overlapMarks(progress, board) : [],
     });
     fitted ||= Boolean(drawn.columns && progress); // an empty board's size and the off-board parts come with the first check
     sizeText.textContent = sizeLine(board);
@@ -953,14 +970,24 @@ export function boardView(host, app) {
       })),
     );
     const said = [...progress.faults, ...progress.guidance.stuck, ...progress.warnings];
+    const overlaps = progress.overlaps ?? [];
+    const dismissed = progress.dismissed ?? [];
     const stale = staleLine(progress.stale);
-    $("board-warnings-count").textContent = said.length + progress.stale.length ? `· ${said.length + progress.stale.length}` : "";
+    const warned = said.length + overlaps.length + progress.stale.length;
+    $("board-warnings-count").textContent = warned ? `· ${warned}` : "";
     $("board-warnings-body").replaceChildren(
       ...(stale ? [staleNote(stale)] : []),
-      ...(said.length
-        ? [h("ul", { class: "board-list warnings" }, said.map((text, i) => h("li", { class: i < progress.faults.length ? "fault" : "warning" }, [text])))]
+      ...(said.length + overlaps.length
+        ? [h("ul", { class: "board-list warnings" }, [
+          ...said.map((text, i) => h("li", { class: i < progress.faults.length ? "fault" : "warning" }, [text])),
+          ...overlaps.map(overlapRow),
+        ])]
         : stale ? [] : [h("p", { class: "empty" }, [progress.done ? "The board matches the circuit." : "Nothing wrong so far."])]),
+      ...(dismissed.length
+        ? [h("p", { class: "board-subhead" }, [`Dismissed (${dismissed.length})`]), h("ul", { class: "board-list dismissed" }, dismissed.map(dismissedRow))]
+        : []),
     );
+    notesPane.update();
     fillSettings();
     if (next) $("board-tray-body").querySelector(`.board-list li[data-ref="${CSS.escape(next.ref)}"]`)?.classList.add("next");
   }
@@ -1005,6 +1032,54 @@ export function boardView(host, app) {
     note.title = "Click to pick it up, then click the board where it goes";
     note.addEventListener("click", () => pickFromTray(next.ref));
     return note;
+  }
+
+  /**
+   * An overlap warning (D-394) with **Note…** (a board note about its parts) and
+   * **Dismiss…** (with a reason, as the Problems pane's, D-176), D-398.
+   * @param {import("./board-logic.js").Overlap} o
+   */
+  function overlapRow(o) {
+    const note = h("button", { type: "button", class: "link-button" }, ["Note…"]);
+    note.title = "Write a note about these parts, kept with the board";
+    note.addEventListener("click", () => notesPane.add(overlapParts(o), true));
+    const dismiss = h("button", { type: "button", class: "link-button" }, ["Dismiss…"]);
+    dismiss.title = "Hide this warning, with a reason if you like (Bring back shows it again)";
+    dismiss.addEventListener("click", () => openForm(host, {
+      title: "Dismiss warning",
+      subtitle: o.text,
+      fields: [{ name: "reason", label: "Reason", kind: "text", value: "", hint: "Optional: why it's fine here. Kept with the board." }],
+      submit: "Dismiss",
+      onSubmit: (v) => boardEdit({ kind: "dismiss", ref: o.parts[0], to: o.parts[1], reason: v.reason }, `Dismiss ${who(o)}`, true),
+    }));
+    return h("li", { class: "warning overlap", "data-overlap": overlapKey(o.parts) }, [o.text, " ", note, " ", dismiss]);
+  }
+
+  /** A dismissed overlap warning, its reason, and **Bring back**. @param {import("./board-logic.js").Overlap} o */
+  function dismissedRow(o) {
+    const back = h("button", { type: "button", class: "link-button" }, ["Bring back"]);
+    back.addEventListener("click", () => void boardEdit({ kind: "restore", ref: o.parts[0], to: o.parts[1] }, `Bring back ${who(o)}`));
+    return h("li", { "data-overlap": overlapKey(o.parts) }, [o.text, ...(o.reason ? [" ", h("span", { class: "reason" }, [`(${o.reason})`])] : []), " ", back]);
+  }
+
+  /** "C1 and TR1's warning", "C1's edge warning", for the History's labels. @param {import("./board-logic.js").Overlap} o */
+  function who(o) {
+    return o.parts[1] === EDGE ? `${o.parts[0]}'s edge warning` : `${o.parts[0]} and ${o.parts[1]}'s warning`;
+  }
+
+  /**
+   * A mark on the board clicked (D-398): its warning's row in Warnings, the pane opened
+   * and the row in view.
+   * @param {string} key `overlapKey`
+   */
+  function openWarning(key) {
+    const pane = /** @type {HTMLDetailsElement} */ ($("board-warnings"));
+    pane.open = true;
+    const row = $("board-warnings-body").querySelector(`[data-overlap="${CSS.escape(key)}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+    row?.classList.remove("flash");
+    void (/** @type {HTMLElement | null} */ (row))?.offsetWidth; // the flash again on a second click
+    row?.classList.add("flash");
   }
 
   /**
@@ -1123,5 +1198,7 @@ export function boardView(host, app) {
     fit: () => canvas.fit(),
     /** View → Reset pane order, for the board's panes too. */
     resetPanes: () => panes?.reset(),
+    /** Drawn again as it is (View → Problem marks turned on or off, D-398). */
+    redraw: () => void (active && draw()),
   };
 }

@@ -103,8 +103,9 @@ radial:
       pitch: 5
       holes: [2]
       source: &mks2 >
-        WIMA MKS 2 (polyester, PCM 5 mm), general data table, 63 VDC column
-        (sy-dep-epc-lpc.web.cern.ch: "MKS2 - Film capacitor - WIMA.pdf")
+        WIMA MKS 2 (polyester, PCM 5 mm), general data table, 63 VDC column, W × H × L
+        (page 2; wima.de/wp-content/uploads/media/e_WIMA_MKS_2.pdf, read 2026-11-24: W
+        across the legs; 2.2 µF and up corrected to that column, D-398)
     - max_value: 220n
       length: 7.2
       width: 3
@@ -135,15 +136,21 @@ radial:
       pitch: 5
       holes: [2]
       source: *mks2
-    - max_value: 3.3µ
+    - max_value: 2.2µ
       length: 7.2
       width: 7.2
       pitch: 5
       holes: [2]
       source: *mks2
+    - max_value: 3.3µ
+      length: 7.2
+      width: 11
+      pitch: 5
+      holes: [2]
+      source: *mks2
     - max_value: 4.7µ
       length: 7.2
-      width: 8.5
+      width: 11
       pitch: 5
       holes: [2]
       source: *mks2

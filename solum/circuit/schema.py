@@ -41,7 +41,7 @@ from solum.circuit.switches import (
 from solum.stripboard.board import Layout, layout_from_data
 from solum.units import format_quantity, format_value, parse_value
 
-SCHEMA_VERSION: Final = 39
+SCHEMA_VERSION: Final = 40
 
 Point = tuple[int, int]
 Rotation = Literal[0, 90, 180, 270]
@@ -727,13 +727,32 @@ class BoardWire(_Model):
     runs: list[tuple[int, float]] = Field(default_factory=list)
 
 
+class BoardNote(_Model):
+    """The builder's note on the board (v40, D-398): its text, about `parts` (refs; none: a
+    general note); `overlap` when written from an overlap warning. Read by
+    `board.note_from_data`, through `Stripboard.layout`."""
+
+    parts: list[str] = Field(default_factory=list)
+    text: NoteText
+    overlap: bool = False
+
+
+class BoardDismissal(_Model):
+    """An overlap warning the builder dismissed (v40, D-398): the two parts that touch, or
+    a part and "edge", either way round, with an optional reason."""
+
+    parts: tuple[str, str]
+    reason: str = Field("", max_length=REASON_MAX)
+
+
 class Stripboard(_Model):
     """The board laid out in the Board view (v35, D-368): the plain form `board.layout_data`
     writes, holes by name. Only its form is checked here; whether it matches the circuit
     (a part since deleted, a leg on the wrong net) is the editor's progress check. v36
     (D-375): off-board parts' spots beside the board and their wires, for v35's pads. v38
     (D-385): `where`, the builder's choice of a part on the board or off it, by ref, only
-    where it differs from the parts list's (`export.chosen_where`)."""
+    where it differs from the parts list's (`export.chosen_where`). v40 (D-398): `notes`, the
+    builder's own, and `dismissed`, the overlap warnings they dismissed."""
 
     size: tuple[int, int]  # columns, strips
     parts: dict[str, dict[str, str]] = Field(default_factory=dict)  # ref → leg → hole
@@ -743,6 +762,8 @@ class Stripboard(_Model):
     wires: list[BoardWire] = Field(default_factory=list)
     off: dict[str, tuple[int, int]] = Field(default_factory=dict)  # ref → [column, strip]
     where: dict[str, Literal["board", "off-board"]] = Field(default_factory=dict)
+    notes: list[BoardNote] = Field(default_factory=list)
+    dismissed: list[BoardDismissal] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _readable(self) -> Self:
@@ -757,7 +778,7 @@ class Stripboard(_Model):
 
 
 class Circuit(_Model):
-    schema_: Literal[39] = Field(alias="schema")
+    schema_: Literal[40] = Field(alias="schema")
     id: str = Field(pattern=ID_PATTERN)
     name: str
     description: str = ""

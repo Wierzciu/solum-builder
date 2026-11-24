@@ -271,13 +271,18 @@ export function boardRefOf(footprints, ref) {
  *   shape: string, size: [number, number], places: Array<[number, number]>}} OffItem an off-board
  *   part beside the board (D-375): drawn as `shape` (row, stomp, toggle, rotary, D-384), its
  *   drawing `size` in holes, each lug's place in it in holes from its top-left hole (offboard.py)
+ * @typedef {{parts: [string, string], text: string, reason: string}} Overlap two bodies
+ *   touching, or one past the board's edge (`parts[1]` "edge"), D-394; `reason` the
+ *   builder's once dismissed (check.py's `Overlap`, D-398)
+ * @typedef {{parts: string[], text: string, overlap: boolean, why: string | null}} NoteState
+ *   one of the board's notes, `why` it's out of date or null (check.py's `NoteState`)
  * @typedef {{to_place: string[], wires_to_go: string[], loose: number, items: OffItem[],
  *   spots: Record<string, Hole>,
  *   unplaceable: string[], nets: NetProgress[],
  *   legs: Record<string, LegProgress[]>, faults: string[], stale: string[], warnings: string[],
  *   done: boolean, nets_done: number, footprints: Record<string, Footprint>, start_size: [number, number],
  *   shorted: Array<[number, number, number]>, rails?: Record<string, Array<[number, number, number]>>, guidance: Guidance,
- *   choices?: Record<string, Choice>}} Progress
+ *   choices?: Record<string, Choice>, overlaps?: Overlap[], dismissed?: Overlap[], notes?: NoteState[]}} Progress
  *   what `/api/stripboard` answers (check.py's `Progress`, with the footprints and the
  *   guidance, D-377)
  * @typedef {{where: "board" | "off-board", moved: boolean, why: string | null}} Choice where a
@@ -999,6 +1004,79 @@ export function netsLine(progress) {
   const left = progress.wires_to_go.length;
   const loose = progress.loose ? `, ${progress.loose} loose` : "";
   return left || progress.loose ? `${nets}; ${left} ${left === 1 ? "lug" : "lugs"} to wire${loose}.` : `${nets}.`;
+}
+
+/** The other side of a body hanging past the board's edge, in an overlap (board.py's `EDGE`). */
+export const EDGE = "edge";
+
+/**
+ * An overlap's key, the same either way round: "C1|TR1" (D-398's matching by the pair).
+ * @param {string[]} parts @returns {string}
+ */
+export function overlapKey(parts) {
+  return [...parts].sort().join("|");
+}
+
+/**
+ * Where each warned overlap is marked on the board (D-398, as the schematic's problem
+ * marks, D-176): between the two parts' middles, or on a part past the edge; dismissed
+ * ones aren't warned, so have none. In board units, with the warning as its title.
+ * @param {Progress | null} progress @param {Board} board
+ * @returns {Array<{key: string, at: [number, number], title: string}>}
+ */
+export function overlapMarks(progress, board) {
+  const middles = new Map(board.parts.filter((p) => p.legs.length).map((p) => {
+    const points = p.legs.map(([, hole]) => holeXY(hole));
+    return [p.ref, /** @type {[number, number]} */ ([0, 1].map((k) => points.reduce((sum, pt) => sum + pt[k], 0) / points.length))];
+  }));
+  return (progress?.overlaps ?? []).flatMap((o) => {
+    const ends = o.parts.filter((r) => r !== EDGE).map((r) => middles.get(r));
+    if (!ends.length || ends.some((m) => !m)) return [];
+    const points = /** @type {Array<[number, number]>} */ (ends);
+    const at = /** @type {[number, number]} */ ([0, 1].map((k) => points.reduce((sum, pt) => sum + pt[k], 0) / points.length));
+    return [{ key: overlapKey(o.parts), at, title: o.text }];
+  });
+}
+
+/**
+ * The refs typed in a note's Parts box: "c2, R1 r1" → ["C2", "R1"] (commas or spaces,
+ * each once), each matched to the board's own ref whatever its case; one not known is
+ * kept as typed, for the server to refuse by name.
+ * @param {string} text @param {string[]} [known] @returns {string[]}
+ */
+export function parseRefs(text, known = []) {
+  const byCase = new Map(known.map((r) => [r.toUpperCase(), r]));
+  return [...new Set(text.split(/[\s,;]+/).filter(Boolean).map((r) => byCase.get(r.toUpperCase()) ?? r))];
+}
+
+/**
+ * The parts a note starts with from an overlap warning: the two, or the one past the edge.
+ * @param {Overlap} overlap @returns {string[]}
+ */
+export function overlapParts(overlap) {
+  return overlap.parts.filter((r) => r !== EDGE);
+}
+
+/**
+ * A board note's plain form for the server's `note-add` / `note-set`: its refs as typed
+ * (`known` the board's refs), the text trimmed, `overlap` kept only while it still names
+ * those parts (D-398).
+ * @param {string} partsText @param {string} text @param {{parts: string[], overlap: boolean} | null} [was]
+ * @param {string[]} [known] @returns {{parts: string[], text: string, overlap?: boolean}}
+ */
+export function notePayload(partsText, text, was = null, known = []) {
+  const parts = parseRefs(partsText, known);
+  const same = Boolean(was?.overlap) && overlapKey(parts) === overlapKey(was?.parts ?? []);
+  return { parts, text: text.trim(), ...(same ? { overlap: true } : {}) };
+}
+
+/**
+ * A board note as the Notes pane shows it: "C2, R1: solder C2 a bit higher." or the
+ * text alone (check.py's `note_words`).
+ * @param {{parts: string[], text: string}} note @returns {string}
+ */
+export function noteLine(note) {
+  return note.parts.length ? `${note.parts.join(", ")}: ${note.text}` : note.text;
 }
 
 /**

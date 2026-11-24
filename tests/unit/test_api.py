@@ -918,7 +918,8 @@ def test_stripboard_edit_places_moves_and_refuses_in_words(monkeypatch: pytest.M
     ).json()
     assert first == {
         "stripboard": {"size": [1, 5], "parts": {"R2": {"1": "A1", "2": "A5"}}, "standing": [],
-                       "cuts": [], "links": [], "wires": [], "off": {}, "where": {}},
+                       "cuts": [], "links": [], "wires": [], "off": {}, "where": {},
+                       "notes": [], "dismissed": []},
         "shift": [-3, -2],
     }  # fmt: skip
     board = {**data, "stripboard": load_yaml(repo / "tests/fixtures/stripboard/rangemaster.yaml")}
@@ -937,6 +938,40 @@ def test_stripboard_edit_places_moves_and_refuses_in_words(monkeypatch: pytest.M
     assert sorted(accepted["stripboard"]["links"]) == [["B1", "B8"], ["K2", "K8"]]
     nothing = c.post("/api/stripboard/edit", json={"circuit": board, "kind": "suggested"})
     assert nothing.status_code == 422 and nothing.json()["message"].startswith("Nothing to suggest")
+
+
+def test_board_notes_and_dismissals_through_the_edit_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D-398: `note-add` keeps the builder's note, `dismiss` the warning on two parts; the
+    check then lists the note and the dismissed warning apart; a note naming a part the
+    board hasn't, or with no text, is a 422 in words."""
+    repo = Path(__file__).resolve().parents[2]
+    data = circuit_to_dict(load_circuit(repo / "tests/fixtures/circuits/old/schema-v39.json"))
+    c = client(monkeypatch, lambda _s: FakeEngine())
+    found = c.post("/api/stripboard", json={"circuit": data}).json()
+    assert found["overlaps"] == [{"parts": ["TR1", "C1"], "reason": "",
+                                  "text": "TR1 and C1's bodies touch: move one a hole "
+                                          "further away if you can."}]  # fmt: skip
+    note = {"parts": ["C1", "TR1"], "text": "Solder C1 higher.", "overlap": True}
+    noted = c.post("/api/stripboard/edit",
+                   json={"circuit": data, "kind": "note-add", "note": note}).json()  # fmt: skip
+    assert noted["stripboard"]["notes"] == [note]
+    data = {**data, "stripboard": noted["stripboard"]}
+    gone = c.post("/api/stripboard/edit", json={"circuit": data, "kind": "dismiss", "ref": "C1",
+                                                "to": "TR1", "reason": "fine"}).json()  # fmt: skip
+    assert gone["stripboard"]["dismissed"] == [{"parts": ["C1", "TR1"], "reason": "fine"}]
+    after = c.post("/api/stripboard",
+                   json={"circuit": {**data, "stripboard": gone["stripboard"]}}).json()  # fmt: skip
+    assert after["overlaps"] == [] and after["dismissed"][0]["reason"] == "fine"
+    assert after["notes"] == [{**note, "why": None}]
+    bad = c.post("/api/stripboard/edit", json={"circuit": data, "kind": "note-add",
+                                               "note": {"parts": ["R9"], "text": "x"}})  # fmt: skip
+    assert bad.status_code == 422
+    assert bad.json()["message"] == "There's no R9 among the board's parts."
+    empty = c.post("/api/stripboard/edit", json={"circuit": data, "kind": "note-add",
+                                                 "note": {"text": " "}})  # fmt: skip
+    assert empty.status_code == 422 and empty.json()["message"] == "A note needs some text."
 
 
 def test_stripboard_start_lays_out_or_fills_the_board(monkeypatch: pytest.MonkeyPatch) -> None:

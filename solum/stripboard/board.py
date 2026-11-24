@@ -6,7 +6,8 @@ so (5, 6) is F7. A part is its legs in holes; a cut takes the copper off one hol
 splits its strip there (and holds no leg); a link is a wire along a column joining two
 holes. Off-board parts sit beside the board at a spot (any hole, on or off it, as drawn)
 and are joined to it by wires: from a lug to a hole (its pad), lug to lug, or loose
-(D-375).
+(D-375). The board keeps the builder's own notes, each naming parts or none, and the
+overlap warnings they dismissed (D-398).
 """
 
 import re
@@ -95,6 +96,59 @@ class Wire:
     runs: tuple[tuple[int, float], ...] = ()
 
 
+EDGE = "edge"  # the other side of a body hanging past the board's edge (D-394)
+
+
+@dataclass(frozen=True)
+class Note:
+    """The builder's note on the board (D-398): `text`, about `parts` (refs; none: a
+    general note); `overlap` when it was written from an overlap warning, so it goes out of
+    date when those parts no longer touch. Never dropped by an edit."""
+
+    text: str
+    parts: tuple[str, ...] = ()
+    overlap: bool = False
+
+
+@dataclass(frozen=True)
+class Dismissed:
+    """An overlap warning the builder dismissed (D-398): two parts, or a part and `EDGE`,
+    matched either way round, with their `reason`. It lapses when they no longer touch."""
+
+    parts: tuple[str, str]
+    reason: str = ""
+
+
+def note_from_data(data: Mapping[str, Any]) -> Note:
+    """A note from its plain form (`{parts: [C2, R1], text: …, overlap: true}`), or a
+    `BoardError` saying what's wrong (its length is the file's to check: `schema`)."""
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise BoardError("A note needs some text.")
+    parts = tuple(dict.fromkeys(str(r).strip() for r in data.get("parts") or () if str(r).strip()))
+    return Note(text, parts, bool(data.get("overlap")) and bool(parts))
+
+
+def note_data(note: Note) -> dict[str, Any]:
+    """A note's plain form, what's unsaid left out."""
+    found: dict[str, Any] = {"parts": list(note.parts), "text": note.text}
+    return found | ({"overlap": True} if note.overlap else {})
+
+
+def dismissed_from_data(data: Mapping[str, Any]) -> Dismissed:
+    """A dismissal from its plain form (`{parts: [C2, R1], reason: …}`), or a `BoardError`."""
+    a, b = (str(r) for r in data["parts"])
+    if not a or not b or a in (b, EDGE):
+        raise BoardError("A dismissed warning names the two parts that touch, or a part and "
+                         "the edge.")  # fmt: skip
+    return Dismissed((a, b), str(data.get("reason") or "").strip())
+
+
+def dismissed_data(d: Dismissed) -> dict[str, Any]:
+    """A dismissal's plain form."""
+    return {"parts": list(d.parts)} | ({"reason": d.reason} if d.reason else {})
+
+
 @dataclass(frozen=True)
 class Layout:
     columns: int
@@ -105,6 +159,8 @@ class Layout:
     wires: tuple[Wire, ...] = ()
     spots: tuple[tuple[str, Hole], ...] = ()  # each off-board part put beside the board
     where: tuple[tuple[str, str], ...] = ()  # a part moved on or off the board by choice
+    notes: tuple[Note, ...] = ()  # the builder's notes (D-398)
+    dismissed: tuple[Dismissed, ...] = ()  # overlap warnings dismissed (D-398)
 
     @property
     def pads(self) -> list[Hole]:
@@ -152,7 +208,8 @@ def layout_from_data(data: Mapping[str, Any]) -> Layout:
     """A layout from its plain form: `{size: [columns, strips], parts: {R1: {1: B2, 2:
     B6}, ...}, standing: [R2], cuts: [F7], links: [[A1, A4]], wires: [{from: VR1.1, hole:
     A1}, {from: VR1.3, lug: IN.S}, {from: V+}], off: {VR1: [2, -6]}, where: {R5:
-    off-board}}`, holes by name but
+    off-board}, notes: [{parts: [C2], text: Socket it.}], dismissed: [{parts: [C2, R1]}]}`,
+    holes by name but
     an off-board part's spot (it may be off the board) as [column, strip] (the form a
     test or the circuit file writes)."""
     try:
@@ -171,8 +228,10 @@ def layout_from_data(data: Mapping[str, Any]) -> Layout:
         spots = tuple((str(ref), (int(at[0]), int(at[1])))
                       for ref, at in data.get("off", {}).items())  # fmt: skip
         where = tuple((str(ref), str(at)) for ref, at in data.get("where", {}).items())
+        notes = tuple(note_from_data(n) for n in data.get("notes") or ())
+        dismissed = tuple(dismissed_from_data(d) for d in data.get("dismissed") or ())
         return Layout(columns, strips, parts, frozenset(_holes(data.get("cuts", ()))), links,
-                      wires, spots, where)  # fmt: skip
+                      wires, spots, where, notes, dismissed)  # fmt: skip
     except (KeyError, TypeError, ValueError) as err:
         if isinstance(err, BoardError):
             raise
@@ -212,4 +271,6 @@ def layout_data(layout: Layout) -> dict[str, Any]:
         "wires": [wire_data(w) for w in layout.wires],
         "off": {ref: list(at) for ref, at in layout.spots},
         "where": dict(layout.where),
+        "notes": [note_data(n) for n in layout.notes],
+        "dismissed": [dismissed_data(d) for d in layout.dismissed],
     }

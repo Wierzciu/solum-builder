@@ -4,6 +4,7 @@ panes in the column, the selection lit on both drawings, the result panes back a
 Board button (D-370)."""
 
 import itertools
+import json
 import re
 import zipfile
 from typing import Any
@@ -13,6 +14,7 @@ from playwright.sync_api import Page, Route, expect
 
 from solum.yamlio import load_yaml
 from tests.ui.conftest import REPO, click_part, open_circuit, reload_kept
+from tests.ui.test_editor import menu
 from tests.ui.test_panes import order as pane_ids
 
 pytestmark = pytest.mark.ui
@@ -120,12 +122,14 @@ def test_the_board_panes_keep_their_own_order(page: Page, base_url: str) -> None
     open_with_board(page, base_url, None)
     page.locator("#board-button").click()
     ids = page.eval_on_selector_all("#board-panels > details", "(ds) => ds.map((d) => d.id)")
-    assert ids == ["board-warnings", "board-schematic", "board-nets", "board-settings"]
+    assert ids == ["board-warnings", "board-notes", "board-schematic", "board-nets",
+                   "board-settings"]  # fmt: skip
     grip = page.locator("[data-grip='board-nets']")
     grip.focus()
     grip.press("ArrowUp")
     moved = page.eval_on_selector_all("#board-panels > details", "(ds) => ds.map((d) => d.id)")
-    assert moved == ["board-warnings", "board-nets", "board-schematic", "board-settings"]
+    assert moved == ["board-warnings", "board-notes", "board-nets", "board-schematic",
+                     "board-settings"]  # fmt: skip
     # the result panes' order is its own
     page.locator("#board-button").click()
     assert pane_ids(page)[0] == "panel-problems"
@@ -861,3 +865,93 @@ def test_the_layout_says_what_its_doing_while_it_works(page: Page, base_url: str
     expect(page.locator("#board-size-text")).to_contain_text("9 × 9 holes")
     expect(page.locator("#board-working")).to_be_hidden()
     expect(button).to_have_text("Layout…")
+
+
+def open_overlapping(page: Page, base_url: str) -> None:
+    """D-394's case (`tests/fixtures/circuits/old/schema-v39.json`): trimmer TR1 and
+    electrolytic C1 whose bodies touch, saved and opened in the Board view."""
+    page.goto(base_url)
+    circuit = json.loads((REPO / "tests/fixtures/circuits/old/schema-v39.json").read_text())
+    made = {"circuit": circuit, "name": f"Overlapping {next(_saves)}"}
+    saved = page.request.post(f"{base_url}api/circuits", data=made)
+    assert saved.ok, saved.text()
+    open_circuit(page, base_url, "circuit/" + saved.json()["circuit"]["id"])
+    show_board(page)
+
+
+def test_an_overlap_is_noted_dismissed_brought_back_and_marked(
+    page: Page, base_url: str, browser_errors: list[str]
+) -> None:
+    """D-398: the warning with no amount, its mark on the board (a click opens its row);
+    Note… writes a note about the two, kept in the board's Notes pane; moving C1 away puts
+    the note out of date (Undo: back); Dismiss… hides the warning and its mark, Bring back
+    shows it; View → Problem marks hides the board's marks; a general note added, edited,
+    deleted; each step undone by the board's own Undo."""
+    open_overlapping(page, base_url)
+    warning = page.locator("#board-warnings-body li.overlap")
+    expect(warning).to_contain_text("TR1 and C1's bodies touch: move one a hole further away")
+    mark = page.locator("#board .board-marks .problem-mark")
+    expect(mark).to_have_count(1)
+    mark.click()
+    expect(warning).to_have_class(re.compile(r"\bflash\b"))
+
+    # a note from the warning: Parts filled in
+    warning.get_by_role("button", name="Note…").click()
+    expect(page.locator("#field-parts")).to_have_value("TR1, C1")
+    page.locator("#field-text").fill("Solder C1 a little higher.")
+    page.get_by_role("button", name="Save").click()
+    note = page.locator("#board-notes-body .board-note").first
+    expect(note).to_have_text(re.compile(r"^TR1, C1: Solder C1 a little higher\."))
+    expect(page.locator("#board-notes-count")).to_have_text("· 1")
+    expect(warning).to_have_count(1)  # a note doesn't dismiss
+
+    # C1 moved a column away: they no longer touch, the note is out of date; Undo: back
+    page.locator("#board .board-part[data-ref='C1']").click()
+    drag_to(page, hole_point(page, 3, 0), hole_point(page, 4, 0))
+    expect(note).to_have_class(re.compile(r"\bout-of-date\b"))
+    expect(note).to_contain_text("(TR1 and C1 no longer touch)")
+    expect(warning).to_have_count(0)
+    page.keyboard.press("Control+z")
+    expect(note).not_to_have_class(re.compile(r"\bout-of-date\b"))
+
+    # dismissed with a reason: no warning, no mark; brought back
+    warning.get_by_role("button", name="Dismiss…").click()
+    page.locator("#field-reason").fill("Low trimmer")
+    page.get_by_role("button", name="Dismiss", exact=True).click()
+    expect(warning).to_have_count(0)
+    expect(mark).to_have_count(0)
+    gone = page.locator("#board-warnings-body .dismissed li")
+    expect(gone).to_contain_text("(Low trimmer)")
+    gone.get_by_role("button", name="Bring back").click()
+    expect(warning).to_have_count(1)
+    expect(mark).to_have_count(1)
+
+    # View → Problem marks hides the board's marks too
+    menu(page, "view-menu", "menu-marks")
+    expect(mark).to_have_count(0)
+    menu(page, "view-menu", "menu-marks")
+    expect(mark).to_have_count(1)
+
+    # a general note, edited (its refs kept), then deleted; Undo brings it back
+    page.locator("#board-notes-add").click()
+    page.locator("#field-text").fill("Socket nothing.")
+    page.get_by_role("button", name="Save").click()
+    general = page.locator("#board-notes-body .board-note").nth(1)
+    expect(general).to_have_text(re.compile(r"^Socket nothing\."))
+    note.get_by_role("button", name="Edit…").click()
+    expect(page.locator("#field-parts")).to_have_value("TR1, C1")
+    page.locator("#field-text").fill("Higher.")
+    page.get_by_role("button", name="Save").click()
+    expect(note).to_have_text(re.compile(r"^TR1, C1: Higher\."))
+    general.get_by_role("button", name="Delete").click()
+    expect(page.locator("#board-notes-body .board-note")).to_have_count(1)
+    page.keyboard.press("Control+z")
+    expect(page.locator("#board-notes-body .board-note")).to_have_count(2)
+
+    # a ref the board hasn't is refused in the form
+    page.locator("#board-notes-add").click()
+    page.locator("#field-parts").fill("R9")
+    page.locator("#field-text").fill("x")
+    page.get_by_role("button", name="Save").click()
+    expect(page.locator("form.popup .error")).to_have_text("There's no R9 among the board's parts.")
+    browser_errors.clear()  # that refusal's 422

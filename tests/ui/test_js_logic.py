@@ -1514,3 +1514,66 @@ def _distance(c: list[float], p: list[float], q: list[float]) -> float:
         else 0.0
     )
     return float(((x - ax - t * dx) ** 2 + (y - ay - t * dy) ** 2) ** 0.5)
+
+
+def test_a_renamed_part_s_ref_follows_in_the_board_s_notes_and_dismissals(js: Page) -> None:
+    """D-398 (as the schematic's names follow, D-267): R1 renamed R7 in a board note and a
+    dismissed warning; a dual op-amp renamed IC1 → IC4: the board names the chip, so IC1
+    becomes IC4 there; a circuit with no board stays as it was."""
+    got = run(
+        js,
+        """
+        const { renamePart, renameChip } = await m('editor/edit.js');
+        const board = { size: [5, 5], parts: {}, notes: [{ parts: ["R1", "IC1"], text: "x" }, { text: "y" }],
+                        dismissed: [{ parts: ["IC1", "R1"] }] };
+        const parts = [{ ref: "R1", type: "resistor" }, { ref: "IC1A", type: "opamp", half: "a" }, { ref: "IC1B", type: "opamp", half: "b" }];
+        const circuit = { parts, stripboard: board };
+        const plain = { parts };
+        return [renamePart(circuit, "R1", "R7").stripboard, renameChip(circuit, "IC1A", "IC4").stripboard,
+                renamePart(plain, "R1", "R7").stripboard ?? null];
+        """,
+    )
+    assert got[0]["notes"] == [{"parts": ["R7", "IC1"], "text": "x"}, {"text": "y"}]
+    assert got[0]["dismissed"] == [{"parts": ["IC1", "R7"]}]
+    assert got[1]["notes"][0]["parts"] == ["R1", "IC4"]
+    assert got[1]["dismissed"] == [{"parts": ["IC4", "R1"]}]
+    assert got[2] is None
+
+
+def test_the_board_s_overlap_marks_and_note_forms(js: Page) -> None:
+    """D-398: a mark between the two parts' middles (TR1 B1/A2/B3 → (6.67, 10), C1 D1/D2
+    → (30, 5): halfway, (18.33, 7.5)), one on a part past the edge at its middle, none for a part not
+    drawn; the key is the same either way round. Refs typed any case, matched to the
+    board's; a note keeps `overlap` only while it names the same two; a note's line."""
+    got = run(
+        js,
+        """
+        const { overlapMarks, overlapKey, parseRefs, notePayload, noteLine, readBoard, overlapParts } = await m('board/board-logic.js');
+        const board = readBoard({ size: [6, 3], parts: { TR1: { 1: "B1", 2: "A2", 3: "B3" }, C1: { 1: "D1", 2: "D2" } } });
+        const progress = { overlaps: [
+          { parts: ["TR1", "C1"], text: "touch", reason: "" },
+          { parts: ["C1", "edge"], text: "past", reason: "" },
+          { parts: ["R9", "C1"], text: "gone", reason: "" },
+        ] };
+        const was = { parts: ["TR1", "C1"], overlap: true };
+        return {
+          marks: overlapMarks(progress, board), none: overlapMarks(null, board),
+          keys: [overlapKey(["TR1", "C1"]), overlapKey(["C1", "TR1"])],
+          refs: parseRefs("c1, tr1 Vol  c1;R9", ["C1", "TR1", "Vol"]),
+          same: notePayload("c1, tr1", " x ", was, ["C1", "TR1"]),
+          other: notePayload("C1", "x", was, ["C1"]),
+          lines: [noteLine({ parts: ["C2", "R1"], text: "Higher." }), noteLine({ parts: [], text: "Socket it." })],
+          parts: overlapParts({ parts: ["C1", "edge"], text: "", reason: "" }),
+        };
+        """,
+    )
+    marks = got["marks"]
+    assert [m["key"] for m in marks] == ["C1|TR1", "C1|edge"]
+    assert marks[0]["at"] == pytest.approx([(20 / 3 + 30) / 2, (10 + 5) / 2])
+    assert marks[1]["at"] == pytest.approx([30, 5]) and marks[1]["title"] == "past"
+    assert got["none"] == [] and got["keys"] == ["C1|TR1", "C1|TR1"]
+    assert got["refs"] == ["C1", "TR1", "Vol", "R9"]
+    assert got["same"] == {"parts": ["C1", "TR1"], "text": "x", "overlap": True}
+    assert got["other"] == {"parts": ["C1"], "text": "x"}
+    assert got["lines"] == ["C2, R1: Higher.", "Socket it."]
+    assert got["parts"] == ["C1"]

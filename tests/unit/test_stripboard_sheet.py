@@ -145,3 +145,23 @@ def test_a_drawing_without_a_view_box_is_refused() -> None:
 def test_the_index_lists_the_board_when_it_went_in() -> None:
     text = index_page(RANGEMASTER, ["circuit.json", "stripboard.pdf"], [], 0)
     assert '<a href="stripboard.pdf">' in text
+
+
+def test_the_builder_s_notes_are_on_the_page_as_written() -> None:
+    """D-398: every board note after the parts, its parts first, no out-of-date tags (R9 is
+    on no board); none, no heading."""
+    c = load_circuit(REPO / "tests/fixtures/circuits/old/schema-v39.json")
+    assert c.stripboard is not None
+    board = layout_data(c.stripboard.layout())
+    notes = [{"parts": ["TR1", "C1"], "text": "Sleeve the leg.", "overlap": True},
+             {"text": "Socket IC1."}, {"parts": ["R9"], "text": "Gone."}]  # fmt: skip
+    for written, shown in ((notes, True), ([], False)):
+        noted = with_board({**board, "notes": written}, c)
+        assert noted.stripboard is not None
+        lists = lists_for(noted.stripboard.layout(), noted, MODELS, TABLE)
+        assert lists.notes == (["TR1, C1: Sleeve the leg.", "Socket IC1.", "R9: Gone."]
+                               if shown else [])  # fmt: skip
+        text = stripboard_page(noted, Drawings(svg(80, 40), svg(80, 40), svg(80, 40)), lists, 2)
+        line = '<ul class="notes"><li>TR1, C1: Sleeve the leg.</li><li>Socket IC1.</li>'
+        assert (line in text) is shown
+        assert ("<h2>Notes (3)</h2>" in text) is shown
