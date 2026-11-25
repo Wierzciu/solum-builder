@@ -12,9 +12,15 @@ then cuts and links, their length and how deep the pads sit; a placement limit b
 (D-367: a decoupling cap or feedback part off its pin's strip, or too far along it)
 costs 20 holes of board, and a little more for each hole its legs are away; problems
 (no room for a cut, a piece left unjoined, a pad with no hole) cost a forbidding
-penalty. The best board breaks the fewest limits, then is the smallest with each hole a
+penalty; a later net's strip alongside a high-gain input's (D-404) costs as a noisy link
+does. The best board breaks the fewest limits, then is the smallest with each hole a
 broken limit's legs are away counted as 2 holes of board (meeting a limit is what
-matters; how far, much less). Holes taken (legs and bodies) never overlap, and a move
+matters; how far, much less). Standing resistors and diodes follow the board's choice
+(D-403): never tried; when needed, each costs more than any room it saves (`STAND`) but
+less than a broken limit or a warning, and the best board has the fewest standing after
+the fewest limits broken and warnings, before size: a part stands only where that meets
+a limit or clears a warning lying flat can't; preferred, free. Holes
+taken (legs and bodies) never overlap, and a move
 that would make two bodies' real outlines touch is refused; the touching pairs Start a
 board leaves are let be (overlaps are warnings the builder decides on, D-398).
 
@@ -36,8 +42,9 @@ from solum.circuit.connectivity import connect
 from solum.circuit.schema import Circuit
 from solum.guides import FootprintTable
 from solum.models import ModelLibrary
-from solum.stripboard.board import PITCH, Hole, Layout, Link, Placed
-from solum.stripboard.check import check_layout, read_layout
+from solum.stripboard.apart import ALONGSIDE, alongside, pairs_of
+from solum.stripboard.board import PITCH, Hole, Layout, Link, Placed, StandUp
+from solum.stripboard.check import check_layout, copper_groups, read_layout
 from solum.stripboard.footprints import (
     BoardPart,
     Outline,
@@ -57,7 +64,7 @@ from solum.stripboard.limits import (
     placement_limits,
 )
 from solum.stripboard.quiet import Guard, calm_nets, guards, kept_clear, noisy_links
-from solum.stripboard.start import shapes, start_for_me
+from solum.stripboard.start import Stand, shapes, start_for_me
 from solum.stripboard.wiring import WiringError, wire_for_me
 
 NC = -1  # a no-connect leg: shares any strip, joins nothing
@@ -66,6 +73,8 @@ WEIGHT = 10_000.0  # a problem's cost: more than any board's area is worth
 LIMIT = 2000.0  # a placement limit broken (D-367): as dear as 20 holes of board
 PULL = 30.0  # and each hole its legs are from keeping it: the way there, under any problem
 QUIET = 500.0  # a link too near a sensitive net's part (D-402): 5 holes of board
+APART = 500.0  # a later net's strip alongside a high-gain input's (D-404): as dear
+STAND = 450.0  # a standing part, when needed (D-403): under a warning's cost, over room saved
 NEAR = 2  # choosing the best board: a hole a broken limit's legs are away, as holes of board
 TEMP = (100.0, 2.0)  # the temperature at the first step and the last
 CELL = 8  # holes: the side of a square of the outlines' grid
@@ -141,8 +150,17 @@ class Problem:
     limits: list[tuple[tuple[str, str], tuple[tuple[str, str], ...]]]  # pin → parts' legs
     guards: list[Guard] = field(default_factory=list)  # parts links keep clear of (D-402)
     guarded: list[tuple[str, int, tuple[str, ...]]] = field(default_factory=list)  # as numbers
-    clear: dict[tuple[str, int], tuple[Hole, ...]] = field(default_factory=dict)  # per shape
+    # per shape and guarded legs: a part guarded for two nets (IC1's pins 3 and 5) has two
+    clear: dict[tuple[str, int, tuple[str, ...]], tuple[Hole, ...]] = field(default_factory=dict)
     calm: frozenset[int] = frozenset()  # nets whose links may pass them (`quiet.calm_nets`)
+    stand_up: StandUp = "needed"  # standing resistors and diodes (D-403)
+    loud: tuple[LoudInput, ...] = ()  # the high-gain inputs (D-400)
+    along: frozenset[tuple[int, int]] = frozenset()  # nets kept off each other's side (D-404)
+
+    @property
+    def stand_cost(self) -> bool:
+        """Whether a standing part counts against a board (When needed, D-403)."""
+        return self.stand_up == "needed"
 
     def shape_of(self, ref: str, legs: dict[str, Hole], standing: bool) -> int:
         """The index of the shape `legs` stand in, added if it isn't one of `shapes`'."""
@@ -162,12 +180,17 @@ class Problem:
 
 
 def problem(layout: Layout | None, circuit: Circuit, models: ModelLibrary,
-            table: FootprintTable, loud: Sequence[LoudInput] = ()) -> Problem:  # fmt: skip
+            table: FootprintTable, loud: Sequence[LoudInput] = (),
+            stand_up: StandUp | None = None) -> Problem:  # fmt: skip
     """The search's view of `circuit`, from Start a board's base (Start over, untidied:
     the parts' On / Off the board choices and the notes kept, D-398); `loud`: the
-    high-gain stages' input pins (`probe.loud_inputs`, D-400); `StartError` as Start a
+    high-gain stages' input pins (`probe.loud_inputs`, D-400); `stand_up`: standing
+    resistors and diodes (None: the board's own choice, D-403); `StartError` as Start a
     board's."""
-    base = start_for_me(layout, circuit, models, table, fill=False, loud=loud).layout
+    chosen = stand_up or (layout.stand_up if layout else "needed")
+    base = start_for_me(layout, circuit, models, table, fill=False, loud=loud,
+                        stand_up="never").layout  # fmt: skip
+    base = replace(base, stand_up=chosen)  # the search stands parts, not its base (D-403)
     r = read_layout(base, circuit, models, table)
     names: dict[str, int] = {}
     net_of: dict[tuple[str, str], int] = {}
@@ -192,11 +215,15 @@ def problem(layout: Layout | None, circuit: Circuit, models: ModelLibrary,
     kept = guards(r.board, r.nets, loud)
     held = [(g.ref, names[g.net], g.legs) for g in kept if g.net in names]
     calm = frozenset(names[n] for n in calm_nets(kept) if n in names)
+    along = frozenset((names[a], names[b]) for x, y in pairs_of(r.nets, loud)
+                      if x in names and y in names for a, b in ((x, y), (y, x)))  # fmt: skip
     pb = Problem(circuit, base, r.board, refs, dict(sorted(pads.items())), {}, {}, net_of,
-                 limits, kept, held, calm=calm)  # fmt: skip
+                 limits, kept, held, calm=calm, stand_up=base.stand_up, loud=tuple(loud),
+                 along=along)  # fmt: skip
+    stand: Stand = "none" if base.stand_up == "never" else "last"
     for ref in refs:
         found: dict[tuple[object, bool], _Variant] = {}
-        for shape in shapes(r.board[ref], every=True):
+        for shape in shapes(r.board[ref], every=True, stand=stand):
             v = _variant(r.board[ref], shape.legs, shape.standing)
             if v is not None:
                 found.setdefault((v.legs, v.standing), v)
@@ -274,6 +301,8 @@ class Derived:
     broken: int  # placement limits broken (D-367)
     far: int  # holes their legs are from keeping them
     noisy: int = 0  # links too near a sensitive net's part (D-402)
+    stood: int = 0  # its standing parts, counted when only needed ones should stand (D-403)
+    apart: int = 0  # later nets' strips alongside a high-gain input's (D-404)
 
     @property
     def area(self) -> int:
@@ -308,6 +337,7 @@ class State:
         self.shorts = 0
         self.joins = 0  # pieces less nets: the least links (or buses) to join them
         self.box: tuple[int, int, int, int] | None = None  # the parts' (None: work it out)
+        self.standing = 0  # parts standing
         self._zone: dict[int, dict[int, int]] | None = None  # kept clear (None: work it out)
         self._guarded = {ref for ref, _, _ in pb.guarded}
         for ref in pb.refs:
@@ -327,6 +357,7 @@ class State:
             self._zone = None
         vi, x, y = self.pos[ref]
         v = self.pb.variants[ref][vi]
+        self.standing += v.standing
         for dx, dy in v.taken:
             h = (x + dx, y + dy)
             if h in self.occ:
@@ -357,6 +388,7 @@ class State:
             self._zone = None
         vi, x, y = self.pos[ref]
         v = self.pb.variants[ref][vi]
+        self.standing -= v.standing
         for dx, dy in v.taken:
             del self.occ[x + dx, y + dy]
         for dx, dy, _ in self.pb.nets[ref][vi]:
@@ -464,13 +496,19 @@ class State:
         self.box = (x0, y0, x1, y1)
         return self.box
 
+    def stood(self) -> int:
+        """The standing parts that count against the board (When needed, D-403)."""
+        return self.standing if self.pb.stand_cost else 0
+
     def lower(self) -> float:
-        """A lower bound on `derive`'s cost: the parts' area, the cuts, the shorts, and a
-        link at least a strip long for each join a net needs (or a problem, dearer)."""
+        """A lower bound on `derive`'s cost: the parts' area and standing parts, the cuts,
+        the shorts, and a link at least a strip long for each join a net needs (or a
+        problem, dearer)."""
         self._refresh()
         x0, y0, x1, y1 = self.parts_box()
         area = (x1 - x0 + 1) * (y1 - y0 + 1)
-        return 100 * area + 3 * self.cuts + 4 * self.joins + WEIGHT * self.shorts
+        return (100 * area + STAND * self.stood() + 3 * self.cuts + 4 * self.joins
+                + WEIGHT * self.shorts)  # fmt: skip
 
     def derive(self) -> "Derived":
         """The board this state makes (module doc) and its cost."""
@@ -600,13 +638,38 @@ class State:
         problems = self.shorts + unjoined + padless
         broken, far = self.broken(cuts)
         noisy = sum(not quiet(n, c, top, bot) for n, v in joins.items() for c, top, bot in v)
+        stood = self.stood()
+        beside = self.alongside(x0, x1, buses)
         area = (x1 - x0 + 1) * (y1 - y0 + 1)
         count = sum(len(v) for v in joins.values())
         length = sum(bot - top for v in joins.values() for _, top, bot in v)
         cost = (100 * area + 3 * (len(cuts) + count) + length + 0.5 * depth
-                + LIMIT * broken + PULL * far + QUIET * noisy + WEIGHT * problems)  # fmt: skip
+                + LIMIT * broken + PULL * far + QUIET * noisy + APART * beside
+                + STAND * stood + WEIGHT * problems)  # fmt: skip
         return Derived(cost, problems, (x0, y0, x1, y1), cuts, count, length, dict(joins),
-                       broken, far, noisy)  # fmt: skip
+                       broken, far, noisy, stood, beside)  # fmt: skip
+
+    def alongside(self, x0: int, x1: int, buses: dict[int, int] | None = None) -> int:
+        """How many pairs of neighbouring strips run a later net's copper beside a
+        high-gain input's for `apart.ALONGSIDE` columns or more, within columns `x0`–`x1`
+        (D-404); `buses`: each net's bus strip, copper the whole width (as the check
+        counts it)."""
+        along = self.pb.along
+        if not along:
+            return 0
+        rows = {y: row.pieces for y, row in self.done.items()}
+        for n, y in (buses or {}).items():
+            rows[y] = (*rows.get(y, ()), (n, x0, x1))
+        count = 0
+        for y, pieces in rows.items():
+            below = rows.get(y + 1)
+            if below is None:
+                continue
+            for na, la, ha in pieces:
+                for nb, lb, hb in below:
+                    if (na, nb) in along and min(ha, hb, x1) - max(la, lb, x0) + 1 >= ALONGSIDE:
+                        count += 1
+        return count
 
     def zone(self) -> dict[int, dict[int, int]]:
         """The holes a link of another net keeps out of (`quiet.kept_clear`) by column and
@@ -618,10 +681,11 @@ class State:
         clear = self.pb.clear
         for ref, n, legs in self.pb.guarded:
             vi, x, y = self.pos[ref]
-            rel = clear.get((ref, vi))
+            rel = clear.get((ref, vi, legs))
             if rel is None:  # its shape's holes kept clear, from its legs' top-left
                 v = self.pb.variants[ref][vi]
-                rel = clear[ref, vi] = tuple(kept_clear([v.at[lg] for lg in legs], v.body)[1])
+                rel = clear[ref, vi, legs] = tuple(kept_clear([v.at[lg] for lg in legs],
+                                                              v.body)[1])  # fmt: skip
             for dx, dy in rel:
                 col = found[x + dx]
                 col[y + dy] = n if col.get(y + dy, n) == n else -1
@@ -693,12 +757,14 @@ class State:
         return None if best is None else (best[1], best[2])
 
 
-# limits broken, noisy links, area and how far, cuts + links, links' length
-Key = tuple[int, int, int, int, int]
+# limits broken, noisy links and strips alongside (D-404), standing parts when only needed
+# ones should stand (D-403), area and how far, cuts + links, links' length
+Key = tuple[int, int, int, int, int, int]
 
 
 def key(d: Derived) -> Key:
-    return (d.broken, d.noisy, d.area + NEAR * d.far, len(d.cuts) + d.count, d.length)
+    return (d.broken, d.noisy + d.apart, d.stood, d.area + NEAR * d.far,
+            len(d.cuts) + d.count, d.length)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -722,8 +788,14 @@ def _found(d: Derived, seed: int, pos: dict[str, Pos]) -> Found:
 
 def start_pos(pb: Problem) -> dict[str, Pos]:
     """Each part's spot on the base board."""
+    return positions(pb, pb.base)
+
+
+def positions(pb: Problem, layout: Layout) -> dict[str, Pos]:
+    """Each part's spot on `layout` as the search numbers it (its shape, its legs'
+    top-left)."""
     pos = {}
-    for p in pb.base.parts:
+    for p in layout.parts:
         holes = p.holes
         x, y = min(h[0] for h in holes.values()), min(h[1] for h in holes.values())
         pos[p.ref] = (pb.shape_of(p.ref, holes, p.standing), x, y)
@@ -767,11 +839,15 @@ def squeeze(st: State, cur: Derived) -> Derived:
 Going = Callable[[int, Found | None], bool]  # (steps done, best so far) → go on?
 
 
-def search(pb: Problem, steps: int, seed: int, going: Going | None = None) -> Found | None:
+def search(pb: Problem, steps: int, seed: int, going: Going | None = None,
+           flat: bool = False) -> Found | None:  # fmt: skip
     """The smallest board one seed finds in `steps` steps (module doc), or None when every
     board it saw had a problem. `going` is asked every `CHECK` steps; False stops early
-    with the best so far; it's told the steps done at the end."""
+    with the best so far; it's told the steps done at the end. `flat`: no standing shape
+    chosen (the flat attempt, D-403: the same board as Never's search with this seed)."""
     rng = random.Random(seed)
+    shapes = {ref: [i for i, v in enumerate(pb.variants[ref]) if not (flat and v.standing)]
+              for ref in pb.refs}  # fmt: skip
     st = State(pb, start_pos(pb))
     refs = pb.refs
     cur = squeeze(st, st.derive())
@@ -783,7 +859,7 @@ def search(pb: Problem, steps: int, seed: int, going: Going | None = None) -> Fo
             done = step
             break
         temp = t0 * (t1 / t0) ** (step / steps)
-        changes = _move(rng, st, cur, refs)
+        changes = _move(rng, st, cur, refs, shapes)
         if not changes or (old := st.move(changes)) is None:
             continue
         # accepted when cost < cur.cost + temp·(−ln r), or no worse (Metropolis)
@@ -805,10 +881,12 @@ def search(pb: Problem, steps: int, seed: int, going: Going | None = None) -> Fo
     return best
 
 
-def _move(rng: random.Random, st: State, cur: Derived, refs: list[str]) -> dict[str, Pos]:
+def _move(rng: random.Random, st: State, cur: Derived, refs: list[str],
+          shapes: dict[str, list[int]]) -> dict[str, Pos]:  # fmt: skip
     """A random move: a part put by the pin a placement limit keeps it at, a long jump, a
     shift, another shape (a leg kept in its hole), a swap of two parts' spots, or a
-    squeeze of everything past a line."""
+    squeeze of everything past a line; `shapes`: each part's shapes it may take (all of
+    them draw as `randrange` would, so the boards don't change)."""
     variants = st.pb.variants
     limits = st.pb.limits
     if limits and rng.random() < 0.05:  # by its pin, in any shape (D-367)
@@ -817,15 +895,14 @@ def _move(rng: random.Random, st: State, cur: Derived, refs: list[str]) -> dict[
         px, py = st._hole(anchor, pin)
         reach = REACH + len(legs) - 1
         dx = rng.choice([d for d in range(-reach, reach + 1) if d])
-        wi = rng.randrange(len(variants[ref]))
+        wi = rng.choice(shapes[ref])
         ox, oy = variants[ref][wi].at[leg]
         return {ref: (wi, px + dx - ox, py - oy)}
     kind = rng.random()
     if kind < 0.05:  # a long jump: anywhere on the board, any shape
         ref = rng.choice(refs)
         x0, y0, x1, y1 = cur.box
-        return {ref: (rng.randrange(len(variants[ref])), rng.randint(x0, x1),
-                      rng.randint(y0, y1))}  # fmt: skip
+        return {ref: (rng.choice(shapes[ref]), rng.randint(x0, x1), rng.randint(y0, y1))}
     if kind < 0.45:  # shift one part
         ref = rng.choice(refs)
         vi, x, y = st.pos[ref]
@@ -838,9 +915,9 @@ def _move(rng: random.Random, st: State, cur: Derived, refs: list[str]) -> dict[
         ref = rng.choice(refs)
         vi, x, y = st.pos[ref]
         vs = variants[ref]
-        if len(vs) < 2:
+        if len(shapes[ref]) < 2:
             return {}
-        wi = rng.randrange(len(vs))
+        wi = rng.choice(shapes[ref])
         if wi == vi:
             return {}
         leg, ox, oy = rng.choice(vs[vi].legs)
@@ -890,13 +967,67 @@ class Built:
     fell_back: bool
 
 
+def _flat_again(st: State, cur: Derived, ref: str) -> Derived | None:
+    """Standing `ref` laid flat (each flat shape, a leg kept in its hole) where that fits,
+    with no problem, and breaks no more limits nor adds a warning; the move left made and
+    the board it makes, else None and nothing changed."""
+    vi, x, y = st.pos[ref]
+    v = st.pb.variants[ref][vi]
+    for wi, w in enumerate(st.pb.variants[ref]):
+        if w.standing:
+            continue
+        for leg, (ox, oy) in v.at.items():
+            nx, ny = w.at[leg]
+            if (old := st.move({ref: (wi, x + ox - nx, y + oy - ny)})) is None:
+                continue
+            d = st.derive()
+            if (not d.problems and d.broken <= cur.broken
+                    and d.noisy + d.apart <= cur.noisy + cur.apart):  # fmt: skip
+                return d
+            st.undo(old)
+    return None
+
+
+def standing_unneeded(pb: Problem, pos: dict[str, Pos]) -> list[str]:
+    """The standing parts on the board at `pos` that could lie flat again with no limit
+    broken nor warning added (`_flat_again`): standing only for room (D-403)."""
+    st = State(pb, dict(pos))
+    cur = st.derive()
+    found = []
+    for ref in pb.refs:
+        if st._v(ref).standing:
+            was = dict(st.pos)
+            if _flat_again(st, cur, ref) is not None:
+                found.append(ref)
+                st.undo({ref: was[ref]})
+    return found
+
+
+def lay_flat(pb: Problem, found: Found) -> Found:
+    """When needed (D-403): `found` with each standing part a limit or warning doesn't
+    need laid flat again (`_flat_again`), in the parts' order, until none can be: the
+    search prefers fewer standing parts only among the boards it saw."""
+    st = State(pb, dict(found.pos))
+    cur = st.derive()
+    changed = True
+    while changed:
+        changed = False
+        for ref in pb.refs:
+            if st._v(ref).standing and (d := _flat_again(st, cur, ref)) is not None:
+                cur, changed = d, True
+    return _found(cur, found.seed, st.pos)
+
+
 def finish(pb: Problem, found: Found | None, models: ModelLibrary,
            table: FootprintTable) -> Built:  # fmt: skip
-    """`found` wired (Wire it for me) and checked; the base when there's nothing found,
-    it doesn't pass the check, or it's no better than the base (limits broken, links too
-    near a sensitive net's part, then size and how far)."""
+    """`found` wired (Wire it for me) and checked, its unneeded standing parts laid flat
+    when needed (`lay_flat`); the base when there's nothing found, it doesn't pass the
+    check, or it's no better than the base (limits broken, links too near a sensitive
+    net's part, then standing parts when needed, then size and how far)."""
+    if found is not None and pb.stand_up == "needed":
+        found = lay_flat(pb, found)
     was = State(pb, start_pos(pb)).derive()
-    if found is None or found.key[:3] >= key(was)[:3]:
+    if found is None or found.key[:4] >= key(was)[:4]:
         return Built(pb.base, True)
     return finish_layout(pb, board_of(pb, found), models, table)
 
@@ -905,8 +1036,8 @@ def finish_layout(pb: Problem, board: Layout, models: ModelLibrary,
                   table: FootprintTable) -> Built:  # fmt: skip
     """A board the search found (`board_of`; the best so far when the builder stops it)
     wired and checked; the base when it doesn't pass the check, or breaks more placement
-    limits than the base, or as many and has more noisy links (D-402), or as many of both
-    and isn't smaller."""
+    limits than the base, or as many and has more noisy links (D-402) and strips alongside
+    a high-gain input's (D-404), or as many of both and isn't smaller."""
     base = pb.base
     with suppress(WiringError):  # nothing to wire
         board = wire_for_me(replace(board, wires=()), pb.circuit, models, table)
@@ -915,8 +1046,11 @@ def finish_layout(pb: Problem, board: Layout, models: ModelLibrary,
     limits = [Limit(part, leg, anchor, pin, "") for (anchor, pin), legs in pb.limits
               for part, leg in legs]  # fmt: skip
 
+    nets = connect(pb.circuit)
+
     def worse(lay: Layout) -> tuple[int, int, int]:
-        noisy = noisy_links(lay, pb.board, connect(pb.circuit), pb.guards)
-        return len(broken_limits(lay, limits)), len(noisy), lay.columns * lay.strips
+        noisy = noisy_links(lay, pb.board, nets, pb.guards)
+        beside = alongside(lay, pb.board, nets, pb.loud, copper_groups(lay))
+        return len(broken_limits(lay, limits)), len(noisy) + len(beside), lay.columns * lay.strips
 
     return Built(base, True) if worse(board) >= worse(base) else Built(board, False)

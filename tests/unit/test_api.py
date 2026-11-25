@@ -944,7 +944,7 @@ def test_stripboard_edit_places_moves_and_refuses_in_words(monkeypatch: pytest.M
     assert first == {
         "stripboard": {"size": [1, 5], "parts": {"R2": {"1": "A1", "2": "A5"}}, "standing": [],
                        "cuts": [], "links": [], "wires": [], "off": {}, "where": {},
-                       "notes": [], "dismissed": []},
+                       "notes": [], "dismissed": [], "stand_up": "needed"},
         "shift": [-3, -2],
     }  # fmt: skip
     board = {**data, "stripboard": load_yaml(repo / "tests/fixtures/stripboard/rangemaster.yaml")}
@@ -960,7 +960,7 @@ def test_stripboard_edit_places_moves_and_refuses_in_words(monkeypatch: pytest.M
     bare = {**data, "stripboard": {**board["stripboard"], "cuts": [], "links": []}}
     accepted = c.post("/api/stripboard/edit", json={"circuit": bare, "kind": "suggested"}).json()
     assert accepted["stripboard"]["cuts"] == ["D8"]  # every suggestion, one edit (D-377)
-    assert sorted(accepted["stripboard"]["links"]) == [["B1", "B8"], ["J2", "J8"]]
+    assert sorted(accepted["stripboard"]["links"]) == [["B1", "B8"], ["G2", "G8"]]
     nothing = c.post("/api/stripboard/edit", json={"circuit": board, "kind": "suggested"})
     assert nothing.status_code == 422 and nothing.json()["message"].startswith("Nothing to suggest")
 
@@ -1140,18 +1140,20 @@ def test_build_a_full_layout_streams_the_base_progress_and_a_checked_board(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The Rangemaster (few steps, for speed): the base first, then the steps done of the
-    budget and each new best, then a wired board that passes the check, and the same
-    board again; *Try another* is another seed set."""
+    budget (four attempts and the flat one, D-403) and each new best, then a wired board
+    that passes the check, and the same board again (the flat board kept); *Try another*
+    is another seed set."""
     from solum.stripboard import compact_job
 
     monkeypatch.setattr(compact_job, "STEPS_PER_PART", 300)
+    monkeypatch.setattr(compact_job, "_flat", {})
     repo = Path(__file__).resolve().parents[2]
     data = circuit_to_dict(load_circuit(repo / "library/starters/dallas-rangemaster.json"))
     c = client(monkeypatch, lambda _s: FakeEngine())
     lines = _compact_lines(c, data)
     assert set(lines[0]) == {"base"} and lines[0]["base"]["stripboard"]["parts"]
     progress = lines[1:-1]
-    assert progress and all(line["of"] == 4 * 300 * 8 for line in progress)  # 8 board parts
+    assert progress and all(line["of"] == 5 * 300 * 8 for line in progress)  # 8 board parts
     assert progress[-1]["done"] == progress[-1]["of"]
     assert any("best" in line for line in progress)
     result = lines[-1]["result"]

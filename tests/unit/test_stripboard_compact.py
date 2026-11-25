@@ -13,13 +13,15 @@ from solum.circuit.schema import Circuit
 from solum.guides import footprint_table
 from solum.models import load_models
 from solum.stripboard.board import Hole, Layout, layout_from_data
-from solum.stripboard.check import check_layout
+from solum.stripboard.check import check_layout, read_layout
 from solum.stripboard.compact import (
     CompactError,
     Found,
+    Problem,
     State,
     _row,
     best_of,
+    board_of,
     finish,
     problem,
     search,
@@ -27,7 +29,7 @@ from solum.stripboard.compact import (
 )
 from solum.stripboard.footprints import board_parts
 from solum.stripboard.limits import LoudInput
-from solum.stripboard.quiet import noisy_links
+from solum.stripboard.quiet import MIXED, guards, noisy_links, zone_of
 from solum.stripboard.start import shapes
 from solum.yamlio import load_yaml
 
@@ -49,13 +51,15 @@ def built(circuit: Circuit, steps: int, seeds: range,
 
 
 @pytest.mark.parametrize(("circuit", "steps", "most"),
-                         [(RANGEMASTER, 5000, 56), (FUZZ_FACE, 20_000, 56)])  # fmt: skip
+                         [(RANGEMASTER, 5000, 56), (FUZZ_FACE, 20_000, 77)])  # fmt: skip
 def test_a_small_circuit_comes_out_small_its_limits_kept_and_checked(
     circuit: Circuit, steps: int, most: int
 ) -> None:
     """Rangemaster 6×8 and Fuzz Face 8×7 in the P6h1 spike (CP-SAT: 40 and 48 holes),
     before the limits; Start a board's base is 10×9 and 18×9. The Rangemaster's emitter
-    bypass cap by Q1's emitter (D-400) costs it a column: 7×8."""
+    bypass cap by Q1's emitter (D-400) costs it a column: 7×8. The Fuzz Face was 8×7 with
+    R1 and R4 standing, R4's body against C1's: standing parts are checked for touching
+    now, and stand only where it saves a column (D-403), so 11×7 in these few steps."""
     board, best = built(circuit, steps, range(1, 3))
     assert best is not None and best.key[0] == 0  # no placement limit broken
     assert board.columns * board.strips <= most
@@ -134,9 +138,13 @@ def test_a_board_whose_parts_share_a_hole_is_refused() -> None:
 def test_every_shape_adds_lying_along_a_strip_standing_and_a_trimmer_turned() -> None:
     board, _ = board_parts(RANGEMASTER, MODELS, TABLE)
     r1 = board["R1"]
-    across, every = shapes(r1), shapes(r1, every=True)
+    across, every = shapes(r1), shapes(r1, every=True, stand="last")
     assert len(every) == 2 * len(across) + 4  # along a strip too; standing, either way round
     assert all(not s.standing for s in across) and sum(s.standing for s in every) == 4
+    assert not any(s.standing for s in shapes(r1, every=True))  # D-403: Never
+    first = shapes(r1, stand="first")
+    assert [s.standing for s in first] == [True, True] + [False] * len(across)  # Prefer
+    assert [s.standing for s in shapes(r1, stand="last")][-2:] == [True, True]
     assert any({y for _, y in s.legs.values()} == {0} for s in every)
     assert all({x for x, _ in s.legs.values()} == {0} for s in across)
     mode = load_circuit(LIBRARY / "starters" / "tone-bender-mk2-mode.json")
@@ -155,3 +163,34 @@ def test_the_search_keeps_links_clear_of_a_high_gain_input_s_parts() -> None:
     board = finish(pb, best, MODELS, TABLE).layout
     assert noisy_links(board, pb.board, connect(FUZZ_FACE), pb.guards) == []
     assert check_layout(board, FUZZ_FACE, MODELS, TABLE).ok
+
+
+def test_a_part_guarded_for_two_nets_keeps_links_clear_of_both() -> None:
+    """D-402: on the Bluesbreaker, IC1 is guarded for pin 3 (IC1A's input) and pin 5
+    (IC1B's, on the bias net VB), and R4 for both its legs. The search's zone was cached
+    per part and shape, so a part's second guard reused the first's holes: pin 5 went
+    unguarded and boards scored quiet carried noisy links. Its zone is the check's."""
+    circuit = load_circuit(LIBRARY / "starters" / "marshall-bluesbreaker.json")
+    loud = [LoudInput("IC1A", "+", frozenset({"V+", "GND", "VB", "IC1B.-", "VA"})),
+            LoudInput("IC1B", "+", frozenset({"V+", "GND"}))]  # fmt: skip
+    pb = problem(None, circuit, MODELS, TABLE, loud)
+    assert {(ref, legs) for ref, _, legs in pb.guarded} >= {("IC1", ("3",)), ("IC1", ("5",))}
+    st = State(pb, start_pos(pb))
+    x0, y0 = st.derive().box[:2]
+    names = {n: name for name, n in pb_names(pb, circuit).items()}
+    searched = {(x - x0, y - y0): names.get(n, MIXED) for x, col in st.zone().items()
+                for y, n in col.items()}  # fmt: skip
+    board = board_of(pb, Found((0,) * 6, 1, 0, 0, 0, 0, tuple(st.pos.items())))
+    r = read_layout(board, circuit, MODELS, TABLE)
+    assert searched == zone_of(board, r.board, guards(r.board, r.nets, loud))
+
+
+def pb_names(pb: Problem, circuit: Circuit) -> dict[str, int]:
+    """Each net's name → the search's number for it."""
+    nets = connect(circuit)
+    found: dict[str, int] = {}
+    for (ref, leg), n in pb.net_of.items():
+        pin = pb.board[ref].pins.get(leg)
+        if pin is not None:
+            found[nets.net_of(*pin)] = n
+    return found
