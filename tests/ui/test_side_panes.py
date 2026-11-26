@@ -174,6 +174,10 @@ def test_the_bar_hides_and_peeks(page: Page, base_url: str) -> None:
     assert canvas_width(page) == pytest.approx(wide, abs=1)
     assert to_screen(page, *part_pos(page, "Q1")) == pytest.approx(where, abs=0.5)
     expect(bar).to_have_attribute("title", "Pin the results (])")
+    # the bar stays above the peeking column, so it keeps the pointer
+    x, y = bar_point(page, "right")
+    hit = page.evaluate(f"document.elementFromPoint({x}, {y}).className")
+    assert "side-bar" in hit
     # leaving it slides it back
     page.mouse.move(400, 400)
     expect(results).not_to_have_class(re.compile(r"\bside-peek\b"))
@@ -219,3 +223,27 @@ def test_a_drag_reaching_the_bar_does_not_peek(page: Page, base_url: str) -> Non
     page.wait_for_timeout(500)  # longer than the bar's rest before a peek
     expect(palette).not_to_have_class(re.compile(r"\bside-peek\b"))
     page.mouse.up()
+
+
+def test_a_palette_group_folds_and_stays_folded(page: Page, base_url: str) -> None:
+    open_circuit(page, base_url, "ts808")
+    passive = page.locator("#palette .palette-group[data-group='Passive']")
+    resistor = page.locator("#palette [data-place='resistor']")
+    expect(passive).to_have_attribute("open", "")
+    expect(resistor).to_be_visible()
+    passive.locator("summary").click()
+    expect(resistor).to_be_hidden()
+    page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
+    open_circuit(page, base_url, "ts808")  # kept with the layout preferences (D-311)
+    expect(page.locator("#palette [data-place='resistor']")).to_be_hidden()
+    page.locator("#palette .palette-group[data-group='Passive'] summary").click()
+    expect(page.locator("#palette [data-place='resistor']")).to_be_visible()
+
+
+def test_a_side_column_s_scroll_bar_shows_only_while_hovered(page: Page, base_url: str) -> None:
+    open_circuit(page, base_url, "ts808")
+    colour = "getComputedStyle(document.getElementById('palette')).scrollbarColor"
+    page.mouse.move(800, 400)
+    assert page.evaluate(colour).startswith("rgba(0, 0, 0, 0)")
+    page.locator("#palette").hover()
+    assert not page.evaluate(colour).startswith("rgba(0, 0, 0, 0)")

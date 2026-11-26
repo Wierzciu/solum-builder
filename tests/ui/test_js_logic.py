@@ -1738,7 +1738,8 @@ def test_build_a_full_layout_s_words(js: Page) -> None:
           figures: b.figuresLine({ columns: 21, strips: 14, cuts: 1, links: 13 }),
           of: b.figuresOf({ size: [9, 8], cuts: ['A1', 'B2'], links: [['C1', 'C4']] }),
           left: [3, 22, 130].map(b.leftText),
-          longer: [b.leftText(20, 40, 35), b.leftText(20, 30, 35), b.leftText(20, 40, 0)],
+          // late only past 1.25 × the estimate + 5 s: 35 s said, late after 48.75 s; 4 s said, after 10 s
+          longer: [b.leftText(20, 49, 35), b.leftText(20, 45, 35), b.leftText(20, 40, 0), b.leftText(2, 9, 4), b.leftText(2, 11, 4)],
           same: [b.sameTry([one, two], { stripboard: { ...two.stripboard } }), b.sameTry([one], two)],
         };
         """,
@@ -1758,7 +1759,8 @@ def test_build_a_full_layout_s_words(js: Page) -> None:
     assert got["of"] == {"columns": 9, "strips": 8, "cuts": 2, "links": 1}
     assert got["left"] == ["Almost done.", "About 25 seconds left.", "About 2 minutes left."]
     assert got["longer"] == ["Taking a little longer than expected…",
-                             "About 20 seconds left.", "About 20 seconds left."]  # fmt: skip
+                             "About 20 seconds left.", "About 20 seconds left.",
+                             "Almost done.", "Taking a little longer than expected…"]  # fmt: skip
     assert got["same"] == [1, -1]
 
 

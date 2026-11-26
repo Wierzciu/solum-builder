@@ -307,6 +307,14 @@ def test_see_through_from_its_button_or_t(page: Page, base_url: str) -> None:
     page.wait_for_function("!document.documentElement.hasAttribute('data-saving')")
 
 
+def click_mark(page: Page, axis: str, line: int) -> None:
+    """Click a ruler's mark where it's drawn, as a user does: a wire's hover line over it
+    is looked through (so Playwright's own click, refusing a covered element, isn't used)."""
+    box = page.locator(f"#board .ruler[data-axis='{axis}'][data-line='{line}']").bounding_box()
+    assert box
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+
 def test_the_board_size_changes_by_hand(
     page: Page, base_url: str, browser_errors: list[str]
 ) -> None:
@@ -315,11 +323,11 @@ def test_the_board_size_changes_by_hand(
     open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
     show_board(page)
     size = page.locator("#board-size-text")
-    page.locator("#board .ruler[data-axis='column'][data-line='0']").click()
+    click_mark(page, "column", 0)
     page.get_by_text("Insert a column left of A").click()
     expect(size).to_have_text("13 × 9 holes (33 × 23 mm), 1 cut, 2 links, 9 wires")
     expect(page.locator("#dirty")).to_be_visible()
-    page.locator("#board .ruler[data-axis='column'][data-line='1']").click()
+    click_mark(page, "column", 1)
     page.get_by_text("Remove column B").click()
     expect(page.locator("#refusal .refusal-text")).to_have_text(
         "Column B isn't empty: the wire at B1 is on it."
@@ -348,7 +356,7 @@ def test_the_board_has_its_own_undo_history(page: Page, base_url: str) -> None:
     expect(page.locator('g.part[data-ref="R1"]')).to_have_count(0)
     show_board(page)
     size = page.locator("#board-size-text")
-    page.locator("#board .ruler[data-axis='column'][data-line='0']").click()
+    click_mark(page, "column", 0)
     page.get_by_text("Insert a column left of A").click()
     expect(size).to_have_text("13 × 9 holes (33 × 23 mm), 1 cut, 2 links, 9 wires")
     page.locator("#history-button").click()
@@ -1205,3 +1213,52 @@ def test_build_a_full_layout_reviewed_tried_again_kept_and_undone(
     review.locator("[data-review='old']").click()
     expect(review).to_be_hidden()
     expect(page.locator("#board-size-text")).to_have_text(kept)
+
+
+def test_saving_in_the_board_view_stays_in_it(page: Page, base_url: str) -> None:
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    page.locator("#board").click(position={"x": 5, "y": 5})  # the canvas has the keys
+    page.keyboard.press("c")  # an edit first: a cut, so there's something to save
+    page.mouse.click(*hole_point(page, 9, 4))
+    expect(page.locator("#dirty")).to_be_visible()
+    page.keyboard.press("Escape")
+    page.keyboard.press("Control+s")
+    expect(page.locator("#dirty")).to_be_hidden()
+    expect(page.locator("#board-button")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#board .board-part").first).to_be_visible()
+    # and from the File menu
+    page.keyboard.press("c")
+    page.mouse.click(*hole_point(page, 9, 4))
+    expect(page.locator("#dirty")).to_be_visible()
+    page.keyboard.press("Escape")
+    page.locator("#menu-file, button:has-text('File')").first.click()
+    page.locator("#menu-save").click()
+    expect(page.locator("#dirty")).to_be_hidden()
+    expect(page.locator("#board-button")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#board .board-part").first).to_be_visible()
+
+
+def test_a_wire_lights_anywhere_along_it(page: Page, base_url: str) -> None:
+    """Its first run too, from the lug to its first bend, which has nothing to drag."""
+    open_with_board(page, base_url, load_yaml(REPO / "tests/fixtures/stripboard/rangemaster.yaml"))
+    show_board(page)
+    expect(page.locator("#board .off-wire").first).to_be_attached()
+    # the wire with the longest first run, and the middle of that run, on screen
+    i, x, y = page.evaluate(
+        """() => { let best = null;
+        document.querySelectorAll('#board .off-wire').forEach((g, i) => {
+          const p = g.querySelector('path.wire');
+          const d = p.getAttribute('d').match(/-?[\\d.]+/g);
+          const [x1, y1, x2, y2] = d.slice(0, 4).map(Number);
+          const long = Math.hypot(x2 - x1, y2 - y1);
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          if (!best || long > best.long) best = { i, long, mx, my, p };
+        });
+        const m = best.p.getScreenCTM();
+        const { mx, my } = best;
+        return [best.i, mx * m.a + my * m.c + m.e, mx * m.b + my * m.d + m.f]; }"""
+    )
+    page.mouse.move(x, y)
+    wire = page.locator("#board .off-wire").nth(i)
+    assert wire.evaluate("g => g.matches(':hover')")

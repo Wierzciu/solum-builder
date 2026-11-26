@@ -7,6 +7,7 @@
 
 import { PALETTE, SUPPLIES } from "./editor/edit.js";
 import { h } from "./panels.js";
+import { remember, remembered } from "./storage.js";
 import { drawShapes } from "./schematic/render.js";
 import { supplySymbol, symbol } from "./schematic/symbols.js";
 
@@ -19,6 +20,17 @@ import { supplySymbol, symbol } from "./schematic/symbols.js";
  * @property {(on: boolean) => void} setWireMode
  * @property {() => void} askLabel the Net label tile's form
  */
+
+/** The palette's folded groups, kept by the server with the other layout preferences (D-311). */
+export const PALETTE_KEY = "solum.palette";
+
+/**
+ * The folded groups' names from what was remembered: anything but a list of names is none.
+ * @param {unknown} value @returns {string[]}
+ */
+export function foldedGroups(value) {
+  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+}
 
 /**
  * Fill the palette. @param {HTMLElement} el
@@ -105,21 +117,27 @@ export function palette(el, schematic, app) {
   const text = tile("Text", "X", [{ text: "Aa", at: [0, 4], size: 13 }, { line: [-16, 9, 16, 9] }], [-20, -10, 40, 22], { "data-tool": "text" });
   text.addEventListener("pointerdown", (e) => dragFromPalette(e, "text"));
   const wiring = h("div", { class: "tiles", id: "wiring-tiles" });
+  const folded = new Set(foldedGroups(remembered(PALETTE_KEY)));
+  /** A group under its heading, which folds it away; remembered. @param {string} name @param {HTMLElement} tiles */
+  const section = (name, tiles) => {
+    const d = h("details", { class: "palette-group", "data-group": name, ...(folded.has(name) ? {} : { open: "" }) }, [h("summary", {}, [h("h2", {}, [name])]), tiles]);
+    d.addEventListener("toggle", () => {
+      if (d.open) folded.delete(name);
+      else folded.add(name);
+      remember(PALETTE_KEY, [...folded]);
+    });
+    return d;
+  };
   el.replaceChildren(
-    h("h2", {}, ["Wiring"]),
-    wiring,
-    ...groups.flatMap((group) => [
-      h("h2", {}, [group]),
-      h("div", { class: "tiles" }, PALETTE.filter((e) => e.group === group).map((e) => {
-        const sym = symbol({ type: e.type, pins: [], draw: {} });
-        const tool = e.tool ?? e.type;
-        const b = tile(e.name, (e.key ?? "").toUpperCase(), sym.shapes, sym.box, { "data-place": tool });
-        b.addEventListener("pointerdown", (ev) => dragFromPalette(ev, tool));
-        return b;
-      })),
-    ]),
-    h("h2", {}, ["Misc"]),
-    h("div", { class: "tiles" }, [text]),
+    section("Wiring", wiring),
+    ...groups.map((group) => section(group, h("div", { class: "tiles" }, PALETTE.filter((e) => e.group === group).map((e) => {
+      const sym = symbol({ type: e.type, pins: [], draw: {} });
+      const tool = e.tool ?? e.type;
+      const b = tile(e.name, (e.key ?? "").toUpperCase(), sym.shapes, sym.box, { "data-place": tool });
+      b.addEventListener("pointerdown", (ev) => dragFromPalette(ev, tool));
+      return b;
+    })))),
+    section("Misc", h("div", { class: "tiles" }, [text])),
   );
   // the supply tiles are there from the start: added only once a circuit had loaded, they
   // pushed every tile below them down a row after a refresh (the user, 2026-11-11, D-281)

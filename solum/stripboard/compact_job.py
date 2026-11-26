@@ -48,9 +48,10 @@ MOST_PARTS = 40  # ...counted up to this many parts: a big board's run stays in 
 THOROUGH = 4  # Thorough looks this many times as long
 PROGRESS_EVERY = 0.2  # seconds between a worker's reports
 SAMPLE = 0.5  # seconds of real steps the estimate times
-# the opening's speed against a whole run's (it speeds up as the board shrinks: 0.5–1.0 on
-# the starters, 0.77 typical) and a run lasting as long as its slowest seed (~10 %, P6h5g)
-RAMP = 0.70
+# the opening's speed against a whole run's (it speeds up as the board shrinks) and a run
+# lasting as long as its slowest seed: 0.70 at P6h5g; re-measured 2026-11-26 on the Mac, nine
+# starters' Quick runs took 1.07–2.1× that estimate (median 1.42), so 0.70 / 1.42 (D-399)
+RAMP = 0.49
 SPAWN = 1.5  # seconds a run spends starting its workers (measured on a Mac)
 FELL_BACK = "Couldn't do better than Start a board's layout: here it is."
 
