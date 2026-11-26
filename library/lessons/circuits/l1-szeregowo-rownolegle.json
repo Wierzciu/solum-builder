@@ -1,0 +1,178 @@
+{
+  "schema": 41,
+  "id": "l1-szeregowo-rownolegle",
+  "name": "Połączenie szeregowo-równoległe",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "R1 = 1 kΩ w szeregu z równoległym połączeniem R2 = R3 = 2 kΩ. Wypadkowa rezystancja wynosi 2 kΩ, więc prąd to 4,5 mA, a na gałęziach równoległych odkłada się 4,5 V.",
+  "tags": [
+    "lekcja",
+    "DC",
+    "rezystory"
+  ],
+  "parts": [
+    {
+      "ref": "V1",
+      "type": "vsource",
+      "value": 9.0
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        -20
+      ],
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        240,
+        -80
+      ],
+      "type": "resistor",
+      "value": "2k"
+    },
+    {
+      "ref": "R3",
+      "pos": [
+        240,
+        40
+      ],
+      "type": "resistor",
+      "value": "2k"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        0,
+        -20
+      ],
+      "to": [
+        80,
+        -20
+      ]
+    },
+    {
+      "from": [
+        120,
+        -20
+      ],
+      "to": [
+        220,
+        -20
+      ]
+    },
+    {
+      "from": [
+        220,
+        -20
+      ],
+      "to": [
+        220,
+        -80
+      ]
+    },
+    {
+      "from": [
+        220,
+        -20
+      ],
+      "to": [
+        220,
+        40
+      ]
+    },
+    {
+      "from": [
+        260,
+        -80
+      ],
+      "to": [
+        300,
+        -80
+      ]
+    },
+    {
+      "from": [
+        300,
+        -80
+      ],
+      "to": [
+        300,
+        40
+      ]
+    },
+    {
+      "from": [
+        300,
+        40
+      ],
+      "to": [
+        260,
+        40
+      ]
+    },
+    {
+      "from": [
+        300,
+        40
+      ],
+      "to": [
+        300,
+        100
+      ]
+    },
+    {
+      "from": [
+        0,
+        20
+      ],
+      "to": [
+        0,
+        60
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        -20
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        220,
+        -20
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        0,
+        60
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        300,
+        100
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Górny węzeł gałęzi równoległych: 4,5 V względem masy."
+  }
+}

@@ -603,7 +603,7 @@ def page(title: str, subtitle: str, body: str) -> str:
     """A printable page of the build package: its own styles, nothing to fetch."""
     esc = html.escape
     return (
-        f'<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
+        f'<!doctype html>\n<html lang="pl"><head><meta charset="utf-8">'
         f"<title>{esc(title)}</title><style>{PAGE_STYLE}</style></head>\n"
         f'<body><h1>{esc(title)}</h1><p class="sub">{esc(subtitle)}</p>\n{body}</body></html>\n'
     )

@@ -1,0 +1,151 @@
+{
+  "schema": 41,
+  "id": "l5-rezonans-rlc",
+  "name": "Rezonans szeregowy RLC",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Szeregowy obwód RLC: R = 100 Ω, L = 10 mH, C = 1 µF. Częstotliwość rezonansowa f₀ = 1/(2π√(LC)) ≈ 1592 Hz, a dobroć Q = (1/R)√(L/C) = 1.",
+  "tags": [
+    "lekcja",
+    "AC",
+    "RLC"
+  ],
+  "parts": [
+    {
+      "ref": "IN",
+      "type": "guitar",
+      "volume": "250k"
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        0
+      ],
+      "type": "resistor",
+      "value": "100"
+    },
+    {
+      "ref": "L1",
+      "pos": [
+        200,
+        0
+      ],
+      "type": "inductor",
+      "value": "10m"
+    },
+    {
+      "ref": "C1",
+      "pos": [
+        300,
+        60
+      ],
+      "rot": 90,
+      "type": "capacitor",
+      "value": "1µ",
+      "kind": "film"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        400,
+        0
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        20,
+        0
+      ],
+      "to": [
+        80,
+        0
+      ]
+    },
+    {
+      "from": [
+        120,
+        0
+      ],
+      "to": [
+        180,
+        0
+      ]
+    },
+    {
+      "from": [
+        220,
+        0
+      ],
+      "to": [
+        300,
+        0
+      ]
+    },
+    {
+      "from": [
+        300,
+        0
+      ],
+      "to": [
+        380,
+        0
+      ]
+    },
+    {
+      "from": [
+        300,
+        0
+      ],
+      "to": [
+        300,
+        40
+      ]
+    },
+    {
+      "from": [
+        300,
+        80
+      ],
+      "to": [
+        300,
+        120
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        340,
+        0
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        300,
+        120
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Węzeł między L i C: przy rezonansie napięcie na C jest największe."
+  }
+}

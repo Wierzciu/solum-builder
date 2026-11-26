@@ -1,0 +1,319 @@
+{
+  "schema": 41,
+  "id": "l4-tranzystor-bias",
+  "name": "Tranzystor: punkt pracy",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Wspólny emiter z tranzystorem 2N3904, Rc = 4,7 kΩ, Re = 1 kΩ i trymerem 20 kΩ w dzielniku bazy. Trymer przesuwa punkt pracy od odcięcia, przez stan aktywny, do nasycenia.",
+  "tags": [
+    "lekcja",
+    "tranzystor",
+    "DC"
+  ],
+  "power": {
+    "rails": {
+      "V+": 9.0
+    }
+  },
+  "parts": [
+    {
+      "ref": "IN",
+      "type": "guitar",
+      "volume": "250k"
+    },
+    {
+      "ref": "C1",
+      "pos": [
+        100,
+        0
+      ],
+      "type": "capacitor",
+      "value": "1µ",
+      "kind": "film"
+    },
+    {
+      "ref": "Q1",
+      "pos": [
+        240,
+        0
+      ],
+      "type": "bjt",
+      "model": "2N3904"
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        160,
+        -120
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "47k"
+    },
+    {
+      "ref": "TR1",
+      "pos": [
+        120,
+        100
+      ],
+      "rot": 90,
+      "type": "trimmer",
+      "value": "20k",
+      "label": "Punkt pracy"
+    },
+    {
+      "ref": "R3",
+      "pos": [
+        300,
+        -120
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "4k7"
+    },
+    {
+      "ref": "R4",
+      "pos": [
+        300,
+        100
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "C2",
+      "pos": [
+        400,
+        -20
+      ],
+      "type": "capacitor",
+      "value": "1µ",
+      "kind": "film"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        520,
+        -20
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        20,
+        0
+      ],
+      "to": [
+        80,
+        0
+      ]
+    },
+    {
+      "from": [
+        120,
+        0
+      ],
+      "to": [
+        160,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        0
+      ],
+      "to": [
+        220,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        -100
+      ],
+      "to": [
+        160,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        -140
+      ],
+      "to": [
+        160,
+        -160
+      ]
+    },
+    {
+      "from": [
+        260,
+        -20
+      ],
+      "to": [
+        300,
+        -20
+      ]
+    },
+    {
+      "from": [
+        300,
+        -20
+      ],
+      "to": [
+        300,
+        -100
+      ]
+    },
+    {
+      "from": [
+        300,
+        -140
+      ],
+      "to": [
+        300,
+        -160
+      ]
+    },
+    {
+      "from": [
+        260,
+        20
+      ],
+      "to": [
+        300,
+        20
+      ]
+    },
+    {
+      "from": [
+        300,
+        20
+      ],
+      "to": [
+        300,
+        80
+      ]
+    },
+    {
+      "from": [
+        300,
+        120
+      ],
+      "to": [
+        300,
+        160
+      ]
+    },
+    {
+      "from": [
+        160,
+        0
+      ],
+      "to": [
+        160,
+        80
+      ]
+    },
+    {
+      "from": [
+        160,
+        80
+      ],
+      "to": [
+        120,
+        80
+      ]
+    },
+    {
+      "from": [
+        140,
+        100
+      ],
+      "to": [
+        140,
+        140
+      ]
+    },
+    {
+      "from": [
+        300,
+        -20
+      ],
+      "to": [
+        380,
+        -20
+      ]
+    },
+    {
+      "from": [
+        420,
+        -20
+      ],
+      "to": [
+        500,
+        -20
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        480,
+        -20
+      ]
+    },
+    {
+      "net": "V+",
+      "pos": [
+        160,
+        -160
+      ]
+    },
+    {
+      "net": "V+",
+      "pos": [
+        300,
+        -160
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        140,
+        140
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        300,
+        160
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "V+": "Szyna zasilania 9 V.",
+    "out": "Kolektor tranzystora: w stanie aktywnym około 4,9 V."
+  }
+}

@@ -7,6 +7,7 @@
  * posted to `/api/view` (the server owns geometry and nets, D-044), drawn, and re-run.
  */
 
+import "./i18n.js";
 import { getJson, postJson } from "./api.js";
 import { audioPanel } from "./audio.js";
 import { frequencyTools } from "./frequency.js";
@@ -84,10 +85,10 @@ function outputSelection() {
 const chosen = () => (state.selection?.resting ? null : state.selection);
 
 /**
- * @typedef {{kind: "starter" | "circuit" | "block" | "new" | "copy", id: string}} Source
+ * @typedef {{kind: "starter" | "circuit" | "block" | "lesson" | "new" | "copy", id: string}} Source
  *   `copy`: an unsaved copy of a core block or a final version (`id` is `core:<id>` or
  *   `user:<id>`), saved only when the user saves it (D-075)
- * @typedef {{kind: "circuit" | "block", layer: "user" | "core" | "starter", path: string,
+ * @typedef {{kind: "circuit" | "block", layer: "user" | "core" | "starter" | "lesson", path: string,
  *   saved: string | null, readonly: boolean, link: string, current: boolean}} FileInfo what the server says about an open file
  * @typedef {import("./schematic/render.js").Selection} Selection
  */
@@ -473,7 +474,7 @@ function sourceFromHash() {
   const hash = decodeURIComponent(location.hash.slice(1));
   if (!hash || hash === "new") return /** @type {Source} */ ({ kind: "new", id: "" });
   const [kind, id] = hash.includes("/") ? hash.split("/", 2) : ["starter", hash];
-  return ["circuit", "starter", "block", "copy"].includes(kind) ? /** @type {Source} */ ({ kind, id }) : null;
+  return ["circuit", "starter", "block", "lesson", "copy"].includes(kind) ? /** @type {Source} */ ({ kind, id }) : null;
 }
 
 /** @param {Source} source */
@@ -539,6 +540,7 @@ function viewUrl(source) {
     const [layer, id] = source.id.split(":", 2);
     return `api/blocks/${encodeURIComponent(id)}?layer=${layer}`;
   }
+  if (source.kind === "lesson") return `api/lessons/${encodeURIComponent(source.id)}/circuit`;
   return `api/${source.kind === "block" ? "blocks" : source.kind === "circuit" ? "circuits" : "starters"}/${encodeURIComponent(source.id)}`;
 }
 
@@ -774,7 +776,7 @@ function showTitle() {
   if (isBlock()) badges.push(h("span", { class: "badge block" }, ["Block"]));
   if (file) badges.push(h("span", { class: "badge version", title: "Version: major.minor (the minor counts saves)" }, [versionTag(c)]));
   // a starter's badge is short (the header is tight); its tooltip says what it is
-  if (file?.readonly) badges.push(h("span", { class: "badge readonly", title: files.readonlyReason() ?? "" }, [file.layer === "core" ? "core \u00b7 read-only" : file.layer === "starter" ? "read-only" : "final \u00b7 read-only"]));
+  if (file?.readonly) badges.push(h("span", { class: "badge readonly", title: files.readonlyReason() ?? "" }, [file.layer === "core" ? "core \u00b7 tylko odczyt" : file.layer === "starter" ? "tylko odczyt" : file.layer === "lesson" ? "lekcja \u00b7 tylko odczyt" : "wersja finalna \u00b7 tylko odczyt"]));
   $("badges").replaceChildren(...badges);
   $("dirty").hidden = !(state.dirty || never);
   $("dirty").textContent = never ? "Never saved" : "Not saved";

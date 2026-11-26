@@ -1,0 +1,126 @@
+{
+  "schema": 41,
+  "id": "l1-prawo-ohma",
+  "name": "Prawo Ohma i dzielnik napięcia",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Obwód szeregowy: źródło 9 V, R1 = 1 kΩ, R2 = 2 kΩ. Prąd wynosi 3 mA, na R1 odkłada się 3 V, a na R2 6 V.",
+  "tags": [
+    "lekcja",
+    "DC",
+    "prawo Ohma"
+  ],
+  "parts": [
+    {
+      "ref": "V1",
+      "type": "vsource",
+      "value": 9.0
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        -20
+      ],
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        220,
+        -20
+      ],
+      "type": "resistor",
+      "value": "2k"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        0,
+        -20
+      ],
+      "to": [
+        80,
+        -20
+      ]
+    },
+    {
+      "from": [
+        120,
+        -20
+      ],
+      "to": [
+        200,
+        -20
+      ]
+    },
+    {
+      "from": [
+        240,
+        -20
+      ],
+      "to": [
+        240,
+        40
+      ]
+    },
+    {
+      "from": [
+        0,
+        20
+      ],
+      "to": [
+        0,
+        60
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        -20
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        160,
+        -20
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        0,
+        60
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        240,
+        40
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        320,
+        0
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Węzeł między R1 i R2: 6 V względem masy."
+  }
+}

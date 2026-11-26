@@ -1,3 +1,7 @@
+> **Polski fork edukacyjny:** interaktywne lekcje podstaw elektroniki i polski interfejs.
+> Zobacz [README.pl.md](README.pl.md) i otwórz `/lekcje/` po uruchomieniu.
+> Ten plik opisuje oryginalny projekt upstream.
+
 # Solum Builder
 
 <p align="center">

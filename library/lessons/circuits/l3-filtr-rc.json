@@ -1,0 +1,132 @@
+{
+  "schema": 41,
+  "id": "l3-filtr-rc",
+  "name": "Filtr dolnoprzepustowy RC",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Filtr RC: R = 10 kΩ, C = 100 nF. Częstotliwość graniczna f_c = 1/(2πRC) ≈ 159 Hz; powyżej niej sygnał jest coraz mocniej tłumiony.",
+  "tags": [
+    "lekcja",
+    "AC",
+    "filtr"
+  ],
+  "parts": [
+    {
+      "ref": "IN",
+      "type": "guitar",
+      "volume": "250k"
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        0
+      ],
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "C1",
+      "pos": [
+        200,
+        60
+      ],
+      "rot": 90,
+      "type": "capacitor",
+      "value": "100n",
+      "kind": "film"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        300,
+        0
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        20,
+        0
+      ],
+      "to": [
+        80,
+        0
+      ]
+    },
+    {
+      "from": [
+        120,
+        0
+      ],
+      "to": [
+        200,
+        0
+      ]
+    },
+    {
+      "from": [
+        200,
+        0
+      ],
+      "to": [
+        280,
+        0
+      ]
+    },
+    {
+      "from": [
+        200,
+        0
+      ],
+      "to": [
+        200,
+        40
+      ]
+    },
+    {
+      "from": [
+        200,
+        80
+      ],
+      "to": [
+        200,
+        120
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        240,
+        0
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        200,
+        120
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Na wyjściu filtra: przy 159 Hz wzmocnienie spada o 3 dB."
+  }
+}

@@ -1,0 +1,354 @@
+{
+  "schema": 41,
+  "id": "l6-przedwzmacniacz",
+  "name": "Przedwzmacniacz klasy A",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Wzmacniacz klasy A według przykładu z wykładu 6: zasilanie 9 V, Rc = 10 kΩ, Re = 1 kΩ, dzielnik bazy 150 kΩ / 22 kΩ. Punkt pracy: Uc ≈ 4,5 V, prąd kolektora ≈ 0,45 mA, wzmocnienie ≈ 10.",
+  "tags": [
+    "lekcja",
+    "tranzystor",
+    "wzmacniacz"
+  ],
+  "power": {
+    "rails": {
+      "V+": 9.0
+    }
+  },
+  "parts": [
+    {
+      "ref": "IN",
+      "type": "guitar",
+      "volume": "250k"
+    },
+    {
+      "ref": "C1",
+      "pos": [
+        100,
+        0
+      ],
+      "type": "capacitor",
+      "value": "1µ",
+      "kind": "film"
+    },
+    {
+      "ref": "Q1",
+      "pos": [
+        240,
+        0
+      ],
+      "type": "bjt",
+      "model": "2N3904"
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        160,
+        -120
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "150k"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        160,
+        100
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "22k"
+    },
+    {
+      "ref": "R3",
+      "pos": [
+        300,
+        -120
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "R4",
+      "pos": [
+        300,
+        100
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "C2",
+      "pos": [
+        400,
+        -20
+      ],
+      "type": "capacitor",
+      "value": "1µ",
+      "kind": "film"
+    },
+    {
+      "ref": "R5",
+      "pos": [
+        460,
+        60
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        520,
+        -20
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        20,
+        0
+      ],
+      "to": [
+        80,
+        0
+      ]
+    },
+    {
+      "from": [
+        120,
+        0
+      ],
+      "to": [
+        160,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        0
+      ],
+      "to": [
+        220,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        -100
+      ],
+      "to": [
+        160,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        -140
+      ],
+      "to": [
+        160,
+        -160
+      ]
+    },
+    {
+      "from": [
+        160,
+        80
+      ],
+      "to": [
+        160,
+        0
+      ]
+    },
+    {
+      "from": [
+        160,
+        120
+      ],
+      "to": [
+        160,
+        140
+      ]
+    },
+    {
+      "from": [
+        260,
+        -20
+      ],
+      "to": [
+        300,
+        -20
+      ]
+    },
+    {
+      "from": [
+        300,
+        -20
+      ],
+      "to": [
+        300,
+        -100
+      ]
+    },
+    {
+      "from": [
+        300,
+        -140
+      ],
+      "to": [
+        300,
+        -160
+      ]
+    },
+    {
+      "from": [
+        260,
+        20
+      ],
+      "to": [
+        300,
+        20
+      ]
+    },
+    {
+      "from": [
+        300,
+        20
+      ],
+      "to": [
+        300,
+        80
+      ]
+    },
+    {
+      "from": [
+        300,
+        120
+      ],
+      "to": [
+        300,
+        160
+      ]
+    },
+    {
+      "from": [
+        300,
+        -20
+      ],
+      "to": [
+        380,
+        -20
+      ]
+    },
+    {
+      "from": [
+        420,
+        -20
+      ],
+      "to": [
+        460,
+        -20
+      ]
+    },
+    {
+      "from": [
+        460,
+        -20
+      ],
+      "to": [
+        500,
+        -20
+      ]
+    },
+    {
+      "from": [
+        460,
+        -20
+      ],
+      "to": [
+        460,
+        40
+      ]
+    },
+    {
+      "from": [
+        460,
+        80
+      ],
+      "to": [
+        460,
+        100
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        480,
+        -20
+      ]
+    },
+    {
+      "net": "V+",
+      "pos": [
+        160,
+        -160
+      ]
+    },
+    {
+      "net": "V+",
+      "pos": [
+        300,
+        -160
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        160,
+        140
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        300,
+        160
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        460,
+        100
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Wyjście przez C2; Re nie jest zablokowane, więc wzmocnienie to około Rc/Re = 10."
+  }
+}

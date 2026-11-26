@@ -91,6 +91,7 @@ from solum.guides import (
     inductor_guide,
     pickup_guide,
 )
+from solum.lessons import LessonBook, LessonError
 from solum.library import BlockLibrary, Layer
 from solum.linear import LinearError
 from solum.live import NUDGE, Field, LiveError, live_view
@@ -168,7 +169,7 @@ SCHEMATIC_MAX = 8_000_000  # bytes: a drawn schematic is well under this (D-205)
 USER_ERRORS = (
     CircuitError, ConnectivityError, NetlistError, BiasError, ModelError, StoreError, SweepError,
     CantSimulate, LiveError, LinearError, AssetError, NamError, RenderError, WavError,
-    MarkingError, CurveError, FixError, SettingsError, FilterError, PickupError,
+    MarkingError, CurveError, FixError, SettingsError, FilterError, PickupError, LessonError,
 )  # fmt: skip
 # what makes a render request fail; a lookup (`cached_only`) answers "not rendered" instead
 LOOKUP_MISSES = (*USER_ERRORS, SimError, HTTPException)
@@ -531,6 +532,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     sim = simulator_from_settings(settings, engine, renders) if engine else None
     models = sim.models if sim else model_library(settings)
     starters = starter_paths(settings.library_dir)
+    lessons = LessonBook(settings.library_dir / "lessons")
     not_included = load_not_included(settings.library_dir / "models")
     store = CircuitStore(settings.data_dir, settings.cache_dir)
     store.sync()  # files edited while the app was off are re-indexed now
@@ -548,8 +550,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def view_of(circuit: Circuit) -> dict[str, Any]:
         return circuit_view(circuit, models, pickup_names)
 
-    def file_view(circuit: Circuit, kind: Literal["circuit", "block"],
-                  layer: Literal["user", "core", "starter"]) -> dict[str, Any]:  # fmt: skip
+    def file_view(
+        circuit: Circuit,
+        kind: Literal["circuit", "block"],
+        layer: Literal["user", "core", "starter", "lesson"],
+    ) -> dict[str, Any]:
         """A saved circuit's or block's view with `file`: what it is, where its file is
         (`<data>/…` for the user's, `<core>/…` and `<starters>/…` for the app's), when it
         was saved, and whether it can be changed (D-075)."""
@@ -563,6 +568,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "user": f"<data>/{own.kind}/{name}",
                 "core": f"<core>/blocks/{name}",
                 "starter": f"<starters>/{name}",
+                "lesson": f"<lessons>/circuits/{name}",
             }[layer],
             "saved": own.modified(circuit.id) if layer == "user" else None,
             "readonly": layer != "user" or circuit.final,
@@ -570,6 +576,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "user": own.link(circuit.id),
                 "core": library.link(circuit.id, "core"),
                 "starter": circuit.id,
+                "lesson": circuit.id,
             }[layer],
         }
         # the current version links by its short id, which has no version in it
@@ -785,6 +792,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if sid not in starters:
             raise HTTPException(404, f"There's no starter circuit called {sid!r}.")
         return file_view(load_circuit(starters[sid]), "circuit", "starter")
+
+    @app.get("/api/lessons")
+    def list_lessons() -> dict[str, Any]:
+        """Spis interaktywnych lekcji (polski fork): wykłady i ich lekcje, bez treści."""
+        return lessons.index()
+
+    @app.get("/api/lessons/{lid}")
+    def lesson_info(lid: str) -> dict[str, Any]:
+        """Treść jednej lekcji: cele, bloki, quizy, id obwodu do otwarcia."""
+        return lessons.payload(lid)
+
+    @app.get("/api/lessons/{lid}/circuit")
+    def open_lesson(lid: str) -> dict[str, Any]:
+        """Obwód lekcji jako widok edytora (tylko do odczytu, jak starter)."""
+        return file_view(lessons.circuit(lid), "circuit", "lesson")
 
     @app.get("/api/models")
     def list_models() -> dict[str, list[str]]:

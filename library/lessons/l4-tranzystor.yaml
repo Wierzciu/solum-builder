@@ -1,0 +1,93 @@
+id: l4-tranzystor
+order: 70
+lecture: L4
+lecture_title: Półprzewodniki — diody, tranzystory, wzmacniacze
+title: Tranzystor bipolarny i punkt pracy
+slides: "L4, slajdy 10–16"
+minutes: 35
+summary: "NPN jako zawór sterowany prądem bazy. Trymerem przesuwamy punkt pracy od odcięcia, przez stan aktywny, do nasycenia — i sprawdzamy to w panelu DC."
+objectives:
+  - "Rozróżniasz odcięcie, stan aktywny i nasycenie."
+  - "Obliczasz prąd kolektora i napięcie U<sub>CE</sub> w układzie wspólnego emitera."
+  - "Rozumiesz rolę dzielnika bazy i rezystora emitera."
+circuit: l4-tranzystor-bias
+circuit_title: Wspólny emiter z regulowanym punktem pracy
+source: "Podstawy_Elektroniki.pdf, wykład L4 (slajdy 10–16)"
+blocks:
+  - type: text
+    md: |
+      ## Tranzystor jako zawór
+
+      W tranzystorze NPN prąd kolektora jest sterowany prądem bazy:
+
+      <div class="formula-line">I<sub>C</sub> = β · I<sub>B</sub> &nbsp;&nbsp;&nbsp; I<sub>E</sub> = I<sub>C</sub> + I<sub>B</sub></div>
+
+      β to wzmocnienie prądowe, zwykle 100–500. Napięcie baza-emiter w stanie aktywnym
+      wynosi około 0,7 V (dla krzemu).
+
+      ## Trzy zakresy pracy
+
+      | Zakres | Warunek | Co się dzieje |
+      |---|---|---|
+      | Odcięcie | U<sub>BE</sub> < 0,6 V | Tranzystor nie przewodzi, I<sub>C</sub> ≈ 0 |
+      | Aktywny | U<sub>BE</sub> ≈ 0,7 V, U<sub>CE</sub> > 0,2 V | Wzmacnia, I<sub>C</sub> = βI<sub>B</sub> |
+      | Nasycenie | U<sub>CE</sub> ≈ 0,2 V | Prąd ogranicza już nie β, a rezystory |
+
+      W układzie wspólnego emitera (CE) rezystor w kolektorze zamienia prąd na napięcie:
+
+      <div class="formula-line">U<sub>CE</sub> = U<sub>CC</sub> − I<sub>C</sub>·R<sub>C</sub> − I<sub>E</sub>·R<sub>E</sub></div>
+
+      Jeśli U<sub>CE</sub> spada do zera, tranzystor jest w nasyceniu i nie wzmacnia.
+      Jeśli prąd nie płynie, jest w odcięciu. Punkt pracy powinien leżeć **w środku**
+      zakresu aktywnego, żeby sygnał miał miejsce na wahania w obie strony.
+  - type: formula
+    html: "U<sub>B</sub> = U<sub>CC</sub> · R<sub>dolne</sub> / (R<sub>górne</sub> + R<sub>dolne</sub>) &nbsp;&nbsp;&nbsp; U<sub>E</sub> = U<sub>B</sub> − 0,7 V"
+  - type: circuit
+    circuit: l4-tranzystor-bias
+    title: "Wspólny emiter z trymerem w bazie"
+    md: |
+      R1 = 47 kΩ od zasilania do bazy, trymer 20 kΩ od bazy do masy, R3 = 4,7 kΩ w
+      kolektorze, R4 = 1 kΩ w emiterze. Trymer ustawiony w połowie daje około 10 kΩ.
+    tasks:
+      - "Uruchom symulację. W panelu **DC** odczytaj: baza ≈ 1,55 V, emiter ≈ 0,88 V, kolektor ≈ 4,87 V."
+      - "Policz prąd emitera: I<sub>E</sub> = U<sub>E</sub>/R4 = 0,88/1000 = 0,88 mA. Prąd kolektora jest prawie taki sam."
+      - "Policz spadek na R3: 0,88 mA · 4,7 kΩ = 4,14 V. Kolektor: 9 − 4,14 = 4,86 V. Zgadza się."
+      - "W panelu **Pokrętła i przełączniki** obracaj trymer od 0% do 100%. Obserwuj kolektor: przy 0% tranzystor jest w odcięciu (kolektor ≈ 9 V), przy 100% w nasyceniu (kolektor blisko 0 V)."
+      - "Ustaw trymer tak, aby kolektor miał około 4,5 V. To jest dobry punkt pracy do wzmacniania sygnału."
+  - type: quiz
+    question: "Tranzystor NPN ma β = 200 i I<sub>B</sub> = 10 µA w stanie aktywnym. Jaki jest prąd kolektora?"
+    options:
+      - "0,2 mA"
+      - "2 mA"
+      - "20 mA"
+      - "200 mA"
+    answer: 1
+    explain: "I<sub>C</sub> = β·I<sub>B</sub> = 200 · 10 µA = 2000 µA = 2 mA."
+  - type: quiz
+    question: "Zwiększasz prąd bazy tak mocno, że kolektor schodzi do około 0,2 V. W jakim zakresie pracuje tranzystor?"
+    options:
+      - "W odcięciu"
+      - "W stanie aktywnym"
+      - "W nasyceniu"
+      - "W przebiciu"
+    answer: 2
+    explain: "Gdy U<sub>CE</sub> spada do około 0,2 V, tranzystor wchodzi w nasycenie. Dalsze zwiększanie I<sub>B</sub> nie zwiększa już I<sub>C</sub> — ograniczają go rezystory."
+  - type: quiz
+    question: "Wzmacniacz CE ma R<sub>C</sub> = 4,7 kΩ i R<sub>E</sub> = 1 kΩ (bez kondensatora bocznikującego). Jakie jest przybliżone wzmocnienie napięciowe?"
+    options:
+      - "−0,21"
+      - "−4,7"
+      - "−47"
+      - "+4,7"
+    answer: 1
+    explain: "Dla niezbocznikowanego emitera A<sub>v</sub> ≈ −R<sub>C</sub>/R<sub>E</sub> = −4,7. Znak minus oznacza odwrócenie fazy."
+  - type: note
+    tone: info
+    title: "Trzy konfiguracje"
+    md: |
+      - **CE (wspólny emiter)** — duże wzmocnienie napięciowe, odwraca fazę; najczęstszy
+        stopień napięciowy.
+      - **CB (wspólna baza)** — wzmocnienie napięciowe, nie odwraca; dobre do wysokich
+        częstotliwości.
+      - **CC (wspólny kolektor, wtórnik emiterowy)** — wzmocnienie ≈ 1, duża rezystancja
+        wejściowa, mała wyjściowa; bufor.

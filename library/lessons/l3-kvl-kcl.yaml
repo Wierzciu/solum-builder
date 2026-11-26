@@ -1,0 +1,86 @@
+id: l3-kvl-kcl
+order: 40
+lecture: L3
+lecture_title: Obwody DC — obliczenia i symulacje
+title: Prawa Kirchhoffa i metoda węzłowa
+slides: "L3, slajdy 23–37"
+minutes: 30
+summary: "Dwa źródła, jeden węzeł i trzy rezystory. KCL daje równanie, z którego wychodzi 6 V — a potem sprawdzamy bilans prądów i napięć."
+objectives:
+  - "Zapisujesz KCL dla węzła i KVL dla oczka."
+  - "Rozwiązujesz proste równanie węzłowe bez macierzy."
+  - "Rozumiesz, po co w L3 była metoda prądów oczkowych i Octave."
+circuit: l3-kvl-kcl
+circuit_title: Dwa źródła i węzeł z trzema rezystorami
+source: "Podstawy_Elektroniki.pdf, wykład L3 (slajdy 23–37)"
+blocks:
+  - type: text
+    md: |
+      ## Prawo prądowe Kirchhoffa (KCL)
+
+      W dowolnym węźle suma prądów wpływających równa się sumie prądów wypływających.
+      Inaczej: suma algebraiczna prądów w węźle wynosi zero.
+
+      <div class="formula-line">Σ I<sub>wpływające</sub> = Σ I<sub>wypływające</sub> &nbsp;&nbsp; albo &nbsp;&nbsp; Σ I<sub>i</sub> = 0</div>
+
+      ## Prawo napięciowe Kirchhoffa (KVL)
+
+      W dowolnym zamkniętym oczku suma napięć źródeł równa się sumie spadków napięć na
+      odbiornikach. Inaczej: suma napięć w oczku, z uwzględnieniem znaków, wynosi zero.
+
+      <div class="formula-line">Σ U<sub>źródeł</sub> = Σ U<sub>spadków</sub> &nbsp;&nbsp; albo &nbsp;&nbsp; Σ U<sub>i</sub> = 0</div>
+
+      Te dwa prawa wystarczą do rozwiązania każdego obwodu liniowego. Metoda prądów
+      oczkowych (L3, slajdy 25–37) to po prostu systematyczny sposób zapisania KVL dla
+      wszystkich oczek i rozwiązania układu równań — często w Octave albo innym programie
+      macierzowym.
+  - type: circuit
+    circuit: l3-kvl-kcl
+    title: "Obwód: 10 V, 5 V, 1 kΩ, 1 kΩ, 2 kΩ"
+    md: |
+      V1 = 10 V, V2 = 5 V, R1 = R2 = 1 kΩ, R3 = 2 kΩ. Węzeł `out` łączy R1, R2 i R3.
+      Oba źródła mają minus na masie.
+    tasks:
+      - "Zapisz KCL dla węzła `out`, oznaczając jego napięcie jako U: (U − 10)/1k + (U − 5)/1k + U/2k = 0."
+      - "Pomnóż przez 2k: 2(U − 10) + 2(U − 5) + U = 0, czyli 5U = 30, więc U = 6 V. Sprawdź w panelu **DC**."
+      - "Policz prądy: przez R1 (10 − 6)/1k = 4 mA, przez R2 (6 − 5)/1k = 1 mA, przez R3 6/2k = 3 mA. KCL: 4 = 1 + 3."
+      - "Zmień V2 na 10 V. Nowe równanie: 2(U − 10) + 2(U − 10) + U = 0, więc U = 8 V. Sprawdź i policz prądy: 2 mA, 2 mA, 4 mA."
+      - "Zmień R3 na 1 kΩ. Wszystkie trzy rezystancje są równe, więc U = (10 + 5 + 0)/3 = 5 V. Prąd przez R2 wynosi wtedy 0 mA."
+  - type: formula
+    html: "(U − V<sub>1</sub>)/R<sub>1</sub> + (U − V<sub>2</sub>)/R<sub>2</sub> + U/R<sub>3</sub> = 0"
+  - type: quiz
+    question: "W węźle spotykają się trzy przewody. Prądy wpływające to 4 mA i 1 mA. Jaki prąd wypływa trzecim przewodem?"
+    options:
+      - "3 mA"
+      - "4 mA"
+      - "5 mA"
+      - "6 mA"
+    answer: 2
+    explain: "KCL: suma prądów wpływających równa się sumie wypływających. 4 mA + 1 mA = 5 mA."
+  - type: quiz
+    question: "W obwodzie z lekcji V2 zmieniono z 5 V na 10 V. Ile wynosi napięcie węzła `out`?"
+    options:
+      - "5 V"
+      - "6 V"
+      - "8 V"
+      - "10 V"
+    answer: 2
+    explain: "Równanie: 2(U − 10) + 2(U − 10) + U = 0 → 5U = 40 → U = 8 V. Symetria obu źródeł i R3 do masy podnosi węzeł."
+  - type: quiz
+    question: "Do czego służy metoda prądów oczkowych?"
+    options:
+      - "Do pomiaru rezystancji omomierzem"
+      - "Do zamiany obwodu na układ równań z prądami oczek"
+      - "Do obliczania tylko obwodów z jednym źródłem"
+      - "Do rysowania schematów"
+    answer: 1
+    explain: "Oczka to zamknięte pętle. Dla każdego oczka piszemy KVL, dostajemy układ równań i rozwiązujemy go macierzowo — dokładnie tak, jak w L3 w Octave."
+  - type: note
+    tone: tip
+    title: "Kolejność rozwiązywania"
+    md: |
+      1. Narysuj obwód i oznacz węzły.
+      2. Wybierz węzeł odniesienia (masę).
+      3. Zapisz KCL dla pozostałych węzłów.
+      4. Rozwiąż równania.
+      5. Sprawdź bilans mocy albo prądów — to najszybszy test, czy nie zgubiłeś znaku.

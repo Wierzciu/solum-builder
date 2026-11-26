@@ -166,6 +166,8 @@ export function appMenus(host, schematic, app) {
   /** Help menu items. @returns {MenuItem[]} */
   function helpItems() {
     return [
+      { label: "Interaktywne lekcje…", id: "menu-lessons", hint: "kurs podstaw elektroniki", run: () => location.assign("lekcje/") },
+      "-",
       { label: "Documentation…", id: "menu-documentation", hint: "the guide, with search", run: () => manualSheet() },
       { label: "Formulas…", id: "menu-formulas", hint: "the sums, with pedal examples", run: () => manualSheet("formulas") },
       { label: "Hot keys…", id: "menu-hotkeys", hint: "every keyboard and mouse shortcut", run: hotkeysSheet },

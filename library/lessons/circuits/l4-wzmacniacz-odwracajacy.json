@@ -1,0 +1,259 @@
+{
+  "schema": 41,
+  "id": "l4-wzmacniacz-odwracajacy",
+  "name": "Wzmacniacz odwracający",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Wzmacniacz odwracający na TL071: Rin = 10 kΩ, Rf = 20 kΩ. Wzmocnienie wynosi −Rf/Rin = −2, a sygnał wyjściowy jest odwrócony o 180°.",
+  "tags": [
+    "lekcja",
+    "opamp",
+    "AC"
+  ],
+  "power": {
+    "rails": {
+      "V+": 9.0,
+      "V-": -9.0
+    }
+  },
+  "parts": [
+    {
+      "ref": "IN",
+      "type": "guitar",
+      "volume": "250k"
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        0
+      ],
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "IC1",
+      "pos": [
+        300,
+        -20
+      ],
+      "model": "TL071",
+      "type": "opamp"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        300,
+        -120
+      ],
+      "type": "resistor",
+      "value": "20k"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        440,
+        -20
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        20,
+        0
+      ],
+      "to": [
+        80,
+        0
+      ]
+    },
+    {
+      "from": [
+        120,
+        0
+      ],
+      "to": [
+        180,
+        0
+      ]
+    },
+    {
+      "from": [
+        180,
+        0
+      ],
+      "to": [
+        180,
+        -40
+      ]
+    },
+    {
+      "from": [
+        180,
+        -40
+      ],
+      "to": [
+        260,
+        -40
+      ]
+    },
+    {
+      "from": [
+        260,
+        -40
+      ],
+      "to": [
+        260,
+        -120
+      ]
+    },
+    {
+      "from": [
+        260,
+        -120
+      ],
+      "to": [
+        280,
+        -120
+      ]
+    },
+    {
+      "from": [
+        320,
+        -120
+      ],
+      "to": [
+        340,
+        -120
+      ]
+    },
+    {
+      "from": [
+        340,
+        -120
+      ],
+      "to": [
+        340,
+        -20
+      ]
+    },
+    {
+      "from": [
+        260,
+        0
+      ],
+      "to": [
+        240,
+        0
+      ]
+    },
+    {
+      "from": [
+        240,
+        0
+      ],
+      "to": [
+        240,
+        40
+      ]
+    },
+    {
+      "from": [
+        340,
+        -20
+      ],
+      "to": [
+        420,
+        -20
+      ]
+    },
+    {
+      "from": [
+        300,
+        -60
+      ],
+      "to": [
+        300,
+        -90
+      ]
+    },
+    {
+      "from": [
+        300,
+        -90
+      ],
+      "to": [
+        360,
+        -90
+      ]
+    },
+    {
+      "from": [
+        300,
+        20
+      ],
+      "to": [
+        300,
+        60
+      ]
+    },
+    {
+      "from": [
+        300,
+        60
+      ],
+      "to": [
+        360,
+        60
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        380,
+        -20
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        240,
+        40
+      ]
+    },
+    {
+      "net": "V+",
+      "pos": [
+        360,
+        -90
+      ]
+    },
+    {
+      "net": "V-",
+      "pos": [
+        360,
+        60
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Wyjście wzmacniacza: wzmocnienie −2 względem wejścia."
+  }
+}

@@ -1,0 +1,92 @@
+id: l3-dzielnik-obciazony
+order: 30
+lecture: L3
+lecture_title: Obwody DC — obliczenia i symulacje
+title: Dzielnik napięcia i jego obciążenie
+slides: "L3, slajdy 12–15"
+minutes: 25
+summary: "Dzielnik 10 kΩ / 10 kΩ daje 4,5 V, ale po dołączeniu odbiornika tylko 3 V. To najważniejsza lekcja o tym, dlaczego źródło ma rezystancję wewnętrzną."
+objectives:
+  - "Obliczasz napięcie wyjściowe dzielnika bez obciążenia i z obciążeniem."
+  - "Rozumiesz pojęcie rezystancji wyjściowej (Thevenina) dzielnika."
+  - "Przewidujesz, kiedy obciążenie zmienia napięcie w zauważalny sposób."
+circuit: l3-dzielnik-obciazony
+circuit_title: Dzielnik 10 kΩ / 10 kΩ z obciążeniem 10 kΩ
+source: "Podstawy_Elektroniki.pdf, wykład L3 (slajdy 12–15)"
+blocks:
+  - type: text
+    md: |
+      ## Dzielnik bez obciążenia
+
+      Dwa rezystory po 10 kΩ, zasilane z 9 V. Prąd płynie przez oba, a wyjście jest
+      między nimi:
+
+      <div class="formula-line">U<sub>out</sub> = U<sub>in</sub> · R<sub>2</sub> / (R<sub>1</sub> + R<sub>2</sub>) = 9 V · 10k / 20k = 4,5 V</div>
+
+      Dopóki nic nie pobiera prądu z wyjścia, wynik jest dokładny.
+
+      ## Dzielnik obciążony
+
+      Dołączamy R3 = 10 kΩ równolegle do R2. Teraz dolna gałąź to R2 || R3 = 5 kΩ.
+      Całkowita rezystancja wynosi 10 kΩ + 5 kΩ = 15 kΩ, prąd 0,6 mA, a wyjście:
+
+      <div class="formula-line">U<sub>out</sub> = 9 V · 5k / 15k = 3 V</div>
+
+      Napięcie spadło o 1,5 V, czyli o jedną trzecią. To nie błąd — to prawo Ohma.
+  - type: formula
+    html: "U<sub>out</sub> = U<sub>Th</sub> · R<sub>L</sub> / (R<sub>Th</sub> + R<sub>L</sub>) &nbsp;&nbsp;&nbsp; R<sub>Th</sub> = R<sub>1</sub> || R<sub>2</sub>"
+  - type: text
+    md: |
+      Każdy dzielnik można zastąpić **źródłem Thevenina**: napięciem jałowym U<sub>Th</sub>
+      i rezystancją wyjściową R<sub>Th</sub>. Dla naszego układu U<sub>Th</sub> = 4,5 V,
+      a R<sub>Th</sub> = 10k || 10k = 5 kΩ. Gdy dołączysz odbiornik R<sub>L</sub>,
+      napięcie dzieli się między R<sub>Th</sub> i R<sub>L</sub>.
+
+      Wniosek praktyczny: **im mniejsza R<sub>Th</sub>, tym sztywniejsze źródło**. Dzielnik
+      o małych rezystancjach jest odporny na obciążenie, ale pobiera więcej prądu ze źródła.
+  - type: circuit
+    circuit: l3-dzielnik-obciazony
+    title: "Dzielnik z odbiornikiem R3"
+    md: |
+      R1 = R2 = R3 = 10 kΩ. R3 pełni rolę odbiornika dołączonego do wyjścia. Amp 1 MΩ na
+      wyjściu to wejście następnego stopnia — jego wpływ jest pomijalny.
+    tasks:
+      - "Uruchom symulację. W panelu **DC** odczytaj `out` ≈ 3 V."
+      - "Policz prąd całkowity: I = 9 V / 15 kΩ = 0,6 mA. Spadek na R1: 6 V. Zostaje 3 V."
+      - "Zmień R3 na 100 kΩ. Policz R2 || R3 = 9,09 kΩ, a potem U<sub>out</sub> = 9 · 9,09/19,09 ≈ 4,29 V. Sprawdź."
+      - "Usuń R3 (kliknij i naciśnij Delete). U<sub>out</sub> wróci do 4,5 V."
+      - "Zastanów się: który dzielnik — 1 kΩ/1 kΩ czy 100 kΩ/100 kΩ — lepiej wytrzyma obciążenie 10 kΩ?"
+  - type: quiz
+    question: "Dzielnik 9 V, R1 = R2 = 10 kΩ zasila odbiornik 10 kΩ. Dlaczego napięcie spada z 4,5 V do 3 V?"
+    options:
+      - "Bo rezystancja R1 rośnie"
+      - "Bo odbiornik pobiera prąd i tworzy równoległe połączenie z R2"
+      - "Bo źródło 9 V słabnie"
+      - "Bo prąd płynie tylko przez R1"
+    answer: 1
+    explain: "Odbiornik dołączony do wyjścia jest równolegle do R2. Zmienia dolną rezystancję dzielnika z 10 kΩ na 5 kΩ, więc wyjście spada."
+  - type: quiz
+    question: "Dzielnik ma UTh = 4,5 V i RTh = 5 kΩ. Dołączasz odbiornik 5 kΩ. Jakie będzie napięcie na odbiorniku?"
+    options:
+      - "1,5 V"
+      - "2,25 V"
+      - "3 V"
+      - "4,5 V"
+    answer: 1
+    explain: "RTh i RL są równe, więc napięcie dzieli się w połowie: 4,5 V / 2 = 2,25 V."
+  - type: quiz
+    question: "Woltomierz o rezystancji 10 MΩ mierzy napięcie dzielnika 10 kΩ / 10 kΩ. Co pokaże?"
+    options:
+      - "0 V"
+      - "Około 3 V"
+      - "Około 4,5 V"
+      - "9 V"
+    answer: 2
+    explain: "10 MΩ jest tysiąc razy większe od 10 kΩ, więc równoległe połączenie z R2 prawie nie zmienia rezystancji. Woltomierz pokaże praktycznie 4,5 V."
+  - type: note
+    tone: warn
+    title: "To nie jest błąd symulacji"
+    md: |
+      Panel **Problemy** pokaże „DC at the output”. W tym układzie wyjście rzeczywiście
+      ma składową stałą — tak ma być. Ostrzeżenie dotyczy układów audio, w których takie
+      napięcie na wyjściu powodowałoby trzaski i przesunięcie punktu pracy następnego stopnia.

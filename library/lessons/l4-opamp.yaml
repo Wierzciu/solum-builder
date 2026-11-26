@@ -1,0 +1,98 @@
+id: l4-opamp
+order: 80
+lecture: L4
+lecture_title: Półprzewodniki — diody, tranzystory, wzmacniacze
+title: Wzmacniacz operacyjny — złote zasady
+slides: "L4, slajdy 17–28"
+minutes: 35
+summary: "Idealny wzmacniacz operacyjny, dwa podstawowe układy i szybki rachunek wzmocnienia. Na schemacie zobaczysz, dlaczego wejścia są wirtualnie zwarte."
+objectives:
+  - "Stosujesz dwie złote zasady idealnego wzmacniacza operacyjnego."
+  - "Obliczasz wzmocnienie układu odwracającego i nieodwracającego."
+  - "Rozpoznajesz wtórnik, sumator i układ różnicowy."
+circuit: l4-wzmacniacz-odwracajacy
+circuit_title: Wzmacniacz odwracający −2
+source: "Podstawy_Elektroniki.pdf, wykład L4 (slajdy 17–28)"
+blocks:
+  - type: text
+    md: |
+      ## Dwie złote zasady
+
+      Dla wzmacniacza operacyjnego pracującego z ujemnym sprzężeniem zwrotnym, przy
+      pominięciu niedoskonałości:
+
+      1. **Żaden prąd nie wpływa do wejść** (I<sub>+</sub> = I<sub>−</sub> = 0).
+      2. **Napięcia na obu wejściach są równe** (U<sub>+</sub> = U<sub>−</sub>) — to
+         „wirtualne zwarcie”, ale nie galwaniczne.
+
+      Dzięki nim analiza układu sprowadza się do prawa Ohma i KCL.
+
+      ## Układ odwracający
+
+      Wejście przez R<sub>1</sub> do wejścia „−”, sprzężenie zwrotne R<sub>2</sub> z
+      wyjścia do „−”, wejście „+” do masy. Węzeł „−” jest wirtualną masą (0 V).
+
+      <div class="formula-line">A<sub>v</sub> = U<sub>out</sub>/U<sub>in</sub> = −R<sub>2</sub>/R<sub>1</sub></div>
+
+      Prąd wejściowy I = U<sub>in</sub>/R<sub>1</sub> płynie dalej przez R<sub>2</sub>,
+      więc U<sub>out</sub> = −I·R<sub>2</sub>. Znak minus oznacza odwrócenie fazy.
+
+      ## Układ nieodwracający
+
+      Wejście na „+”, a dzielnik R<sub>f</sub>/R<sub>g</sub> zamyka pętlę do „−”:
+
+      <div class="formula-line">A<sub>v</sub> = 1 + R<sub>f</sub>/R<sub>g</sub></div>
+
+      Gdy R<sub>f</sub> = 0, wzmocnienie wynosi 1 — to **wtórnik napięciowy** (bufor).
+  - type: formula
+    html: "A<sub>v</sub> = −R<sub>2</sub>/R<sub>1</sub> &nbsp;&nbsp; (odwracający) &nbsp;&nbsp;&nbsp; A<sub>v</sub> = 1 + R<sub>f</sub>/R<sub>g</sub> &nbsp;&nbsp; (nieodwracający)"
+  - type: circuit
+    circuit: l4-wzmacniacz-odwracajacy
+    title: "TL071 w układzie odwracającym"
+    md: |
+      R1 = 10 kΩ na wejściu, R2 = 20 kΩ w sprzężeniu zwrotnym, TL071 zasilany z ±9 V.
+      Wejście „+” jest na masie, więc węzeł „−” też jest wirtualną masą.
+    tasks:
+      - "Uruchom symulację i sprawdź w panelu **DC**, że wejście „−” ma 0 V, mimo że nie jest podłączone do masy bezpośrednio."
+      - "Policz wzmocnienie: A = −20k/10k = −2. W panelu **Częstotliwość** sprawdź, że wzmocnienie w środku pasma wynosi około 6 dB i że faza jest odwrócona."
+      - "Zmień R2 na 47 kΩ. Nowe wzmocnienie to −4,7 (około 13,4 dB)."
+      - "Zmień R1 na 4,7 kΩ, a R2 zostaw 20 kΩ. Wzmocnienie ≈ −4,26. Sprawdź w symulatorze."
+      - "Zastanów się, co się stanie, gdy R2 = 0 Ω. Czy układ nadal będzie wzmacniał?"
+  - type: quiz
+    question: "Wzmacniacz nieodwracający ma R<sub>f</sub> = 10 kΩ i R<sub>g</sub> = 10 kΩ. Jakie jest wzmocnienie?"
+    options:
+      - "0,5"
+      - "1"
+      - "2"
+      - "10"
+    answer: 2
+    explain: "A = 1 + R<sub>f</sub>/R<sub>g</sub> = 1 + 10k/10k = 2."
+  - type: quiz
+    question: "W układzie odwracającym R<sub>1</sub> = 10 kΩ, a R<sub>2</sub> = 47 kΩ. Jakie jest wzmocnienie?"
+    options:
+      - "−4,7"
+      - "−0,21"
+      - "+4,7"
+      - "+5,7"
+    answer: 0
+    explain: "A = −R<sub>2</sub>/R<sub>1</sub> = −47k/10k = −4,7. Minus oznacza odwrócenie fazy."
+  - type: quiz
+    question: "Dlaczego wejście „−” w układzie odwracającym nazywamy wirtualną masą?"
+    options:
+      - "Bo jest połączone z masą drutem"
+      - "Bo wzmacniacz utrzymuje na nim 0 V przez sprzężenie zwrotne"
+      - "Bo nie płynie przez nie żaden prąd"
+      - "Bo ma potencjał zasilania"
+    answer: 1
+    explain: "Wejście „+” jest na 0 V, a złota zasada mówi, że U<sub>+</sub> = U<sub>−</sub>. Sprzężenie zwrotne doprowadza „−” do 0 V, choć nie ma tam galwanicznego połączenia z masą."
+  - type: note
+    tone: info
+    title: "Sumator i układ różnicowy"
+    md: |
+      **Sumator odwracający:** kilka rezystorów wejściowych do węzła „−”, jedno
+      sprzężenie zwrotne R<sub>f</sub>. Wyjście to suma ważona z minusem:
+
+      <div class="formula-line">U<sub>out</sub> = −R<sub>f</sub> · (U<sub>1</sub>/R<sub>1</sub> + U<sub>2</sub>/R<sub>2</sub> + …)</div>
+
+      **Układ różnicowy:** dwa dzielniki, wyjście proporcjonalne do różnicy napięć.
+      W następnej lekcji zbudujemy sumator jako prosty przetwornik cyfrowo-analogowy.

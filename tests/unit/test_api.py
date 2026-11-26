@@ -149,7 +149,7 @@ def test_preferences_are_kept_and_sent_inside_the_pages(monkeypatch: pytest.Monk
     for url in ("/", "/index.html", "/manual/"):
         page = c.get(url)
         assert page.headers["cache-control"] == "no-cache"  # never an old copy's theme
-        assert '<html data-theme="dark" lang="en">' in page.text
+        assert '<html data-theme="dark" lang="pl">' in page.text
         assert '"solum.autorun": 1' in page.text.split("</script>")[0]
     forgot = c.put("/api/settings", json={"preferences": {"solum.theme": None}})
     assert forgot.json()["preferences"] == {"solum.autorun": 1}

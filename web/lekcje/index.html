@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lekcje podstaw elektroniki — Solum Builder</title>
+  <meta name="description" content="Interaktywne lekcje podstaw elektroniki oparte na wykładach L1, L3, L4, L5 i L6, z symulatorem obwodów Solum Builder.">
+  <link rel="icon" href="../assets/brand/favicon-outlined.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../theme.css">
+  <link rel="stylesheet" href="lekcje.css">
+  <script type="module" src="lekcje.js"></script>
+</head>
+<body>
+  <a class="skip" href="#lesson">Przejdź do lekcji</a>
+  <header class="top">
+    <a class="brand" href="../" title="Otwórz symulator">
+      <img src="../assets/brand/solum-logo-outlined.svg" alt="" width="34" height="34">
+      <span class="wordmark"><span class="solum">Solum</span> <span class="builder">Builder</span></span>
+    </a>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="course">Lekcje podstaw elektroniki</span>
+    <span class="spacer"></span>
+    <nav class="top-nav" aria-label="Nawigacja">
+      <a href="../manual/">Przewodnik (EN)</a>
+      <a class="simulator-link" href="../">Symulator <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Spis lekcji">
+      <div class="progress-card">
+        <div class="progress-head">
+          <span>Twój postęp</span>
+          <strong id="progress-count">0 / 0</strong>
+        </div>
+        <div class="progress-track" role="progressbar" aria-label="Postęp kursu" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-bar">
+          <span id="progress-fill"></span>
+        </div>
+        <p id="progress-note" class="progress-note">Zacznij od pierwszej lekcji.</p>
+      </div>
+      <nav id="toc" class="toc" aria-label="Lekcje"></nav>
+      <p class="sidebar-foot">
+        Materiały źródłowe: <em>Podstawy elektroniki</em>, wykłady L1, L3, L4, L5 i L6.
+      </p>
+    </aside>
+
+    <main id="lesson" class="lesson" tabindex="-1">
+      <div class="loading" id="loading">
+        <span class="spinner" aria-hidden="true"></span>
+        Wczytuję lekcję…
+      </div>
+    </main>
+  </div>
+
+  <footer class="bottom">
+    <span>Solum Builder PL · interaktywne lekcje</span>
+    <span class="dot" aria-hidden="true">·</span>
+    <span>fork edukacyjny, licencja jak upstream (MIT + Commons Clause)</span>
+  </footer>
+</body>
+</html>

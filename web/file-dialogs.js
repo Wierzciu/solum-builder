@@ -282,6 +282,7 @@ export function fileDialogs(host, app) {
     const f = app.file();
     if (!f?.readonly) return null;
     if (f.layer === "starter") return "Starters can't be changed. File \u2192 Save as\u2026 makes a copy you can name.";
+    if (f.layer === "lesson") return "To obwód przykładowy lekcji. Plik \u2192 Zapisz jako\u2026 tworzy Twoją kopię do edycji.";
     if (f.layer === "core") return "Core blocks can't be changed. Edit it from the Blocks dialog to make a copy.";
     return `${app.circuit().name} is a final version, so it's read-only. Unlock it in File \u2192 Properties first.`;
   }

@@ -29,3 +29,6 @@ dist/
 
 # The working notes (plan, session diary, hand-test list, prompts): kept locally, not shipped
 /notes/
+
+# lekcje: podglądy generowane przez look.py
+/library/lessons/circuits/*.png

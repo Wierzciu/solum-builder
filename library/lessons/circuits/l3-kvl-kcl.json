@@ -1,0 +1,185 @@
+{
+  "schema": 41,
+  "id": "l3-kvl-kcl",
+  "name": "KVL i KCL: dwa źródła, jeden węzeł",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Dwa źródła 10 V i 5 V oraz rezystory 1 kΩ, 1 kΩ i 2 kΩ. W węźle między nimi KCL daje 6 V; przez R1 płynie 4 mA, przez R2 1 mA, a przez R3 3 mA.",
+  "tags": [
+    "lekcja",
+    "DC",
+    "Kirchhoff"
+  ],
+  "parts": [
+    {
+      "ref": "V1",
+      "type": "vsource",
+      "value": 10.0
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        -20
+      ],
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        280,
+        -20
+      ],
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "V2",
+      "pos": [
+        400,
+        0
+      ],
+      "type": "vsource",
+      "value": 5.0
+    },
+    {
+      "ref": "R3",
+      "pos": [
+        200,
+        60
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "2k"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        0,
+        -20
+      ],
+      "to": [
+        80,
+        -20
+      ]
+    },
+    {
+      "from": [
+        120,
+        -20
+      ],
+      "to": [
+        200,
+        -20
+      ]
+    },
+    {
+      "from": [
+        200,
+        -20
+      ],
+      "to": [
+        260,
+        -20
+      ]
+    },
+    {
+      "from": [
+        300,
+        -20
+      ],
+      "to": [
+        400,
+        -20
+      ]
+    },
+    {
+      "from": [
+        200,
+        -20
+      ],
+      "to": [
+        200,
+        40
+      ]
+    },
+    {
+      "from": [
+        0,
+        20
+      ],
+      "to": [
+        0,
+        60
+      ]
+    },
+    {
+      "from": [
+        400,
+        20
+      ],
+      "to": [
+        400,
+        60
+      ]
+    },
+    {
+      "from": [
+        200,
+        80
+      ],
+      "to": [
+        200,
+        120
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        -20
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        200,
+        -20
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        0,
+        60
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        400,
+        60
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        200,
+        120
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Węzeł KCL: (U−10)/1k + (U−5)/1k + U/2k = 0, czyli U = 6 V."
+  }
+}

@@ -1,0 +1,92 @@
+id: l4-dioda
+order: 60
+lecture: L4
+lecture_title: Półprzewodniki — diody, tranzystory, wzmacniacze
+title: Dioda — zawór jednokierunkowy
+slides: "L4, slajdy 2–9"
+minutes: 30
+summary: "Złącze PN, napięcie przewodzenia, dioda LED i prosty obcinacz sygnału. Zobaczysz na oscyloskopie, jak dioda obcina dodatnią połówkę."
+objectives:
+  - "Opisujesz kierunek przewodzenia diody i napięcie przewodzenia."
+  - "Dobierasz rezystor szeregowy do diody LED."
+  - "Rozumiesz, jak dioda obcina sygnał i dlaczego potrzeba rezystora ograniczającego prąd."
+circuit: l4-dioda-obcinacz
+circuit_title: Obcinacz na diodzie 1N4148
+source: "Podstawy_Elektroniki.pdf, wykład L4 (slajdy 2–9)"
+blocks:
+  - type: text
+    md: |
+      ## Złącze PN
+
+      Dioda to złącze dwóch rodzajów półprzewodnika: **p** (nadmiar dziur) i **n** (nadmiar
+      elektronów). Prąd płynie łatwo od anody do katody, gdy napięcie przekroczy barierę —
+      dla krzemu około **0,6–0,7 V**, dla germanu 0,2–0,3 V. W stronę przeciwną dioda
+      praktycznie nie przewodzi, dopóki nie osiągniesz napięcia przebicia.
+
+      Dokładny opis prądu to równanie Shockleya:
+
+      <div class="formula-line">I = I<sub>S</sub> · (e<sup>U/(n·U<sub>T</sub>)</sup> − 1)</div>
+
+      gdzie U<sub>T</sub> ≈ 26 mV w temperaturze pokojowej, a n to współczynnik emisji
+      (bliski 1–2). W praktyce przy napięciu powyżej progu prąd rośnie bardzo szybko, dlatego
+      **nigdy nie podłączaj diody bezpośrednio do źródła napięcia** — potrzebny jest
+      rezystor albo inne ograniczenie prądu.
+
+      ## Diody LED
+
+      LED to dioda świecąca. Spadek napięcia zależy od koloru: czerwona około 1,8–2,0 V,
+      zielona 2,0–2,2 V, niebieska i biała 3,0–3,4 V. Prąd dobieramy zwykle 5–20 mA.
+      Rezystor szeregowy liczymy z prawa Ohma:
+
+      <div class="formula-line">R = (U<sub>zasilania</sub> − U<sub>LED</sub>) / I<sub>LED</sub></div>
+
+      Dla 9 V, czerwonej LED 2 V i 15 mA: R = (9 − 2)/0,015 = 467 Ω — najbliższa wartość
+      z szeregu to **470 Ω**.
+  - type: formula
+    html: "R = (U<sub>zas</sub> − U<sub>LED</sub>) / I &nbsp;&nbsp;&nbsp; P<sub>R</sub> = I² · R"
+  - type: circuit
+    circuit: l4-dioda-obcinacz
+    title: "Dioda w roli obcinacza"
+    md: |
+      Sygnał z wejścia przechodzi przez R1 = 1 kΩ, a dioda 1N4148 jest włączona do masy
+      anodą do góry. Dodatnia połówka, powyżej około 0,7 V, przewodzi diodę i jest
+      zwierana do masy. Ujemna połówka nie przewodzi i przechodzi dalej.
+    tasks:
+      - "Uruchom symulację i otwórz **Oscyloskop**. Ustaw poziom **Soft**, potem **Medium** i **Hard**. Zwróć uwagę, że dodatnie szczyty są ścięte, a ujemne nie."
+      - "W panelu **Sonda** sprawdź wartość szczytową na `out`. Powinna być zbliżona do napięcia przewodzenia diody."
+      - "Odwróć diodę (zaznacz ją i użyj obrotu) — teraz powinna obcinać ujemną połówkę. Zapisz różnicę."
+      - "Zmień R1 na 10 kΩ. Prąd diody jest mniejszy, więc obcięcie może być mniej ostre. Wyjaśnij dlaczego."
+  - type: quiz
+    question: "Czerwona LED ma napięcie przewodzenia 2 V i ma płynąć 10 mA z zasilania 5 V. Jaki rezystor szeregowy?"
+    options:
+      - "100 Ω"
+      - "300 Ω"
+      - "500 Ω"
+      - "1 kΩ"
+    answer: 1
+    explain: "R = (5 − 2)/0,01 = 300 Ω. Moc rezystora: I²R = 0,0001 · 300 = 30 mW, więc wystarczy zwykły 0,25 W."
+  - type: quiz
+    question: "Dlaczego diody LED nie podłącza się bezpośrednio do 9 V?"
+    options:
+      - "Bo LED nie świeci przy 9 V"
+      - "Bo prąd diody rósłby wykładniczo i dioda uległaby zniszczeniu"
+      - "Bo napięcie 9 V jest zbyt małe"
+      - "Bo dioda przewodzi tylko w stronę zaporową"
+    answer: 1
+    explain: "Po przekroczeniu napięcia przewodzenia prąd rośnie bardzo gwałtownie. Bez rezystora ograniczającego popłynie prąd ograniczony tylko rezystancją wewnętrzną źródła — zwykle zbyt duży."
+  - type: quiz
+    question: "W obcinaczu z lekcji dioda jest anodą do góry, katodą do masy. Którą połówkę sygnału obcina?"
+    options:
+      - "Dodatnią"
+      - "Ujemną"
+      - "Obie"
+      - "Żadną"
+    answer: 0
+    explain: "Gdy na anodzie pojawia się napięcie dodatnie większe od progu, dioda przewodzi i zwiera węzeł do masy. Ujemna połówka polaryzuje diodę zaporowo."
+  - type: note
+    tone: warn
+    title: "Moc rezystora też ma znaczenie"
+    md: |
+      Rezystor 470 Ω przy prądzie 15 mA wydziela P = I²R = 0,106 W. Rezystor 0,25 W jest
+      w porządku, ale przy większych prądach lub napięciach trzeba wybrać mocniejszy.
+      W symulatorze wartość mocy pokaże panel **Sonda** dla wybranej części.

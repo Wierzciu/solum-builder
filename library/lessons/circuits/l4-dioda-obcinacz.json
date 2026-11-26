@@ -1,0 +1,131 @@
+{
+  "schema": 41,
+  "id": "l4-dioda-obcinacz",
+  "name": "Obcinacz na diodzie",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Dioda 1N4148 do masy za rezystorem 1 kΩ. Dodatnia połówka sygnału jest ograniczana do około 0,7 V, ujemna przechodzi prawie bez zmian.",
+  "tags": [
+    "lekcja",
+    "dioda",
+    "AC"
+  ],
+  "parts": [
+    {
+      "ref": "IN",
+      "type": "guitar",
+      "volume": "250k"
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        0
+      ],
+      "type": "resistor",
+      "value": "1k"
+    },
+    {
+      "ref": "D1",
+      "pos": [
+        200,
+        60
+      ],
+      "rot": 90,
+      "type": "diode",
+      "model": "1N4148"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        300,
+        0
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        20,
+        0
+      ],
+      "to": [
+        80,
+        0
+      ]
+    },
+    {
+      "from": [
+        120,
+        0
+      ],
+      "to": [
+        200,
+        0
+      ]
+    },
+    {
+      "from": [
+        200,
+        0
+      ],
+      "to": [
+        280,
+        0
+      ]
+    },
+    {
+      "from": [
+        200,
+        0
+      ],
+      "to": [
+        200,
+        40
+      ]
+    },
+    {
+      "from": [
+        200,
+        80
+      ],
+      "to": [
+        200,
+        120
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        0
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        240,
+        0
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        200,
+        120
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Węzeł za diodą: dodatnie szczyty są obcinane na napięciu przewodzenia."
+  }
+}

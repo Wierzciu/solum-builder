@@ -1,0 +1,207 @@
+{
+  "schema": 41,
+  "id": "wstep-dzielnik",
+  "name": "Dzielnik z potencjometrem",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Dzielnik napięcia: 9 V na rezystorze 10 kΩ i potencjometrze 10 kΩ. Pokrętło „Napięcie” przesuwa suwak, a napięcie wyjściowe zmienia się od 0 V do 9 V.",
+  "tags": [
+    "lekcja",
+    "DC",
+    "dzielnik"
+  ],
+  "parts": [
+    {
+      "ref": "V1",
+      "type": "vsource",
+      "value": 9.0
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        -80
+      ],
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "VR1",
+      "pos": [
+        240,
+        -80
+      ],
+      "type": "pot",
+      "value": "10k",
+      "label": "Napięcie"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        320,
+        -100
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "1M"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        0,
+        -20
+      ],
+      "to": [
+        0,
+        -80
+      ]
+    },
+    {
+      "from": [
+        0,
+        -80
+      ],
+      "to": [
+        80,
+        -80
+      ]
+    },
+    {
+      "from": [
+        120,
+        -80
+      ],
+      "to": [
+        220,
+        -80
+      ]
+    },
+    {
+      "from": [
+        260,
+        -80
+      ],
+      "to": [
+        300,
+        -80
+      ]
+    },
+    {
+      "from": [
+        300,
+        -80
+      ],
+      "to": [
+        300,
+        40
+      ]
+    },
+    {
+      "from": [
+        300,
+        40
+      ],
+      "to": [
+        240,
+        40
+      ]
+    },
+    {
+      "from": [
+        240,
+        -100
+      ],
+      "to": [
+        240,
+        -140
+      ]
+    },
+    {
+      "from": [
+        240,
+        -140
+      ],
+      "to": [
+        320,
+        -140
+      ]
+    },
+    {
+      "from": [
+        320,
+        -140
+      ],
+      "to": [
+        320,
+        -120
+      ]
+    },
+    {
+      "from": [
+        320,
+        -80
+      ],
+      "to": [
+        320,
+        0
+      ]
+    },
+    {
+      "from": [
+        0,
+        20
+      ],
+      "to": [
+        0,
+        60
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        0,
+        -80
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        240,
+        -140
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        0,
+        60
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        240,
+        40
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        320,
+        0
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Suwak potencjometru: napięcie dzielone w stosunku R_dolne / (R1 + R_dolne)."
+  }
+}

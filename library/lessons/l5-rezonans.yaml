@@ -1,0 +1,98 @@
+id: l5-rezonans
+order: 90
+lecture: L5
+lecture_title: Obwody prądu przemiennego
+title: Rezonans szeregowy RLC
+slides: "L5, slajdy 12–26"
+minutes: 35
+summary: "Cewka i kondensator wymieniają energię. Przy częstotliwości rezonansowej ich reaktancje się znoszą, a prąd osiąga maksimum — zobaczysz to na charakterystyce."
+objectives:
+  - "Obliczasz reaktancję indukcyjną i pojemnościową."
+  - "Wyznaczasz impedancję szeregowego obwodu RLC."
+  - "Obliczasz częstotliwość rezonansową i dobroć."
+circuit: l5-rezonans-rlc
+circuit_title: Szeregowy RLC 100 Ω / 10 mH / 1 µF
+source: "Podstawy_Elektroniki.pdf, wykład L5 (slajdy 12–26)"
+blocks:
+  - type: text
+    md: |
+      ## Reaktancje
+
+      W obwodzie prądu przemiennego cewka i kondensator stawiają opór zależny od
+      częstotliwości. Nazywamy go reaktancją:
+
+      <div class="formula-line">X<sub>L</sub> = 2π f L &nbsp;&nbsp;&nbsp; X<sub>C</sub> = 1/(2π f C)</div>
+
+      Cewka „opiera się” szybkim zmianom prądu, więc jej reaktancja **rośnie** z
+      częstotliwością. Kondensator przy wysokich częstotliwościach prawie zwiera obwód,
+      więc jego reaktancja **maleje**.
+
+      ## Impedancja
+
+      W szeregowym RLC rezystancja i reaktancje składają się jak boki trójkąta:
+
+      <div class="formula-line">Z = √(R² + (X<sub>L</sub> − X<sub>C</sub>)²)</div>
+
+      Kąt fazowy między napięciem a prądem:
+
+      <div class="formula-line">φ = arctan((X<sub>L</sub> − X<sub>C</sub>)/R)</div>
+
+      ## Rezonans
+
+      Przy częstotliwości rezonansowej X<sub>L</sub> = X<sub>C</sub>, więc się znoszą.
+      Impedancja jest wtedy równa R, prąd jest największy, a napięcia na L i C mogą być
+      znacznie większe od napięcia źródła.
+
+      <div class="formula-line">f<sub>0</sub> = 1/(2π√(L·C)) &nbsp;&nbsp;&nbsp; Q = (1/R)·√(L/C) &nbsp;&nbsp;&nbsp; BW = f<sub>0</sub>/Q</div>
+
+      Q to dobroć: im większa, tym węższy i wyższy pik.
+  - type: formula
+    html: "f<sub>0</sub> = 1/(2π√(10 mH · 1 µF)) ≈ 1592 Hz &nbsp;&nbsp;&nbsp; Q = (1/100)·√(10 mH / 1 µF) = 1"
+  - type: circuit
+    circuit: l5-rezonans-rlc
+    title: "Szeregowy RLC: R = 100 Ω, L = 10 mH, C = 1 µF"
+    md: |
+      Wejście przez R1, następnie cewka L1 i kondensator C1 do masy. Wyjście jest na
+      węźle między L1 i C1 — mierzymy napięcie na kondensatorze.
+    tasks:
+      - "Uruchom symulację i otwórz panel **Częstotliwość**. Znajdź maksimum — powinno być blisko 1,59 kHz."
+      - "Policz: f<sub>0</sub> = 1/(2π√(0,01 · 10⁻⁶)) = 1/(2π · 10⁻⁴) ≈ 1592 Hz."
+      - "Przy rezonansie X<sub>L</sub> = 2π·1592·0,01 ≈ 100 Ω, X<sub>C</sub> = 1/(2π·1592·10⁻⁶) ≈ 100 Ω. Z = R = 100 Ω."
+      - "Dobroć Q = (1/100)·√(0,01/10⁻⁶) = (1/100)·100 = 1. Szerokość pasma BW ≈ 1592 Hz."
+      - "Zmień C na 100 nF. Nowe f<sub>0</sub> ≈ 5033 Hz. Sprawdź, czy pik przesunął się w prawo."
+      - "Zmień R na 10 Ω. Q wzrośnie do 10, a pik stanie się węższy i wyższy. Uwaga: napięcie na C może wtedy znacznie przekroczyć napięcie wejściowe."
+  - type: quiz
+    question: "Co dzieje się w szeregowym obwodzie RLC przy częstotliwości rezonansowej?"
+    options:
+      - "X<sub>L</sub> = X<sub>C</sub>, a Z = R"
+      - "X<sub>L</sub> = 0, a X<sub>C</sub> = ∞"
+      - "Prąd spada do zera"
+      - "Rezystancja R znika"
+    answer: 0
+    explain: "Przy rezonansie reaktancje są równe co do wartości i przeciwne co do znaku, więc się znoszą. Impedancja jest czysto rezystancyjna i równa R."
+  - type: quiz
+    question: "Obwód ma L = 10 mH i C = 100 nF. Jaka jest częstotliwość rezonansowa?"
+    options:
+      - "159 Hz"
+      - "1,59 kHz"
+      - "5,03 kHz"
+      - "50,3 kHz"
+    answer: 2
+    explain: "f<sub>0</sub> = 1/(2π√(0,01 · 100·10⁻⁹)) = 1/(2π · 3,16·10⁻⁵) ≈ 5033 Hz."
+  - type: quiz
+    question: "Jak zmieni się pik rezonansu, gdy zwiększysz R z 100 Ω do 1 kΩ?"
+    options:
+      - "Stanie się węższy i wyższy"
+      - "Stanie się szerszy i niższy"
+      - "Nie zmieni się"
+      - "Zniknie całkowicie"
+    answer: 1
+    explain: "Q = (1/R)√(L/C), więc większe R daje mniejsze Q. Pik jest szerszy, niższy, a obwód mniej selektywny."
+  - type: note
+    tone: info
+    title: "Napięcia większe niż źródło"
+    md: |
+      Przy dużym Q napięcie na cewce i kondensatorze może być wielokrotnie większe od
+      napięcia wejściowego. To nie łamie prawa zachowania energii: energia krąży między
+      L i C, a źródło dostarcza tylko straty na R. W praktyce trzeba wtedy uważać na
+      napięcia znamionowe kondensatorów.

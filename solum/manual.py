@@ -239,7 +239,7 @@ def page_html(manual: Manual, page: Page) -> str:
     nav += [item(p) for p in manual.pages if p.slug and p.slug not in grouped]
     return (
         "<!doctype html>\n"
-        '<html lang="en"><head><meta charset="utf-8">'
+        '<html lang="pl"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(page.title)} · Solum Builder guide</title>"
         '<link rel="icon" href="../assets/brand/favicon-outlined.svg">'

@@ -1,0 +1,98 @@
+id: l6-sumator
+order: 110
+lecture: L6
+lecture_title: Tranzystor i wzmacniacz operacyjny w praktyce
+title: Sumator odwracający jako przetwornik DAC
+slides: "L6, slajdy 24–28"
+minutes: 30
+summary: "Trzy napięcia 1 V, 2 V i 4 V dodają się do −7 V. To trzybitowy przetwornik cyfrowo-analogowy: pokazuje, jak wzmacniacz operacyjny zamienia bity na napięcie."
+objectives:
+  - "Obliczasz wyjście sumatora odwracającego."
+  - "Rozumiesz wagę bitów w przetworniku DAC."
+  - "Wiesz, dlaczego wzmacniacz operacyjny nadaje się do sumowania sygnałów."
+circuit: l6-sumator-dac
+circuit_title: Sumator 1 V + 2 V + 4 V = −7 V
+source: "Podstawy_Elektroniki.pdf, wykład L6 (slajdy 24–28)"
+blocks:
+  - type: text
+    md: |
+      ## Sumator odwracający
+
+      Każde wejście podłączamy przez własny rezystor do węzła „−”. Węzeł ten jest wirtualną
+      masą, więc prądy wejściowe sumują się i płyną przez rezystor sprzężenia zwrotnego:
+
+      <div class="formula-line">U<sub>out</sub> = −R<sub>f</sub> · (U<sub>1</sub>/R<sub>1</sub> + U<sub>2</sub>/R<sub>2</sub> + U<sub>3</sub>/R<sub>3</sub>)</div>
+
+      Gdy wszystkie rezystancje wejściowe są równe R, a R<sub>f</sub> = R, wyjście jest
+      po prostu ujemną sumą napięć wejściowych:
+
+      <div class="formula-line">U<sub>out</sub> = −(U<sub>1</sub> + U<sub>2</sub> + U<sub>3</sub>)</div>
+
+      ## Trzybitowy DAC
+
+      Jeśli wejścia mają wagi 1 V, 2 V i 4 V (bity 0, 1, 2), to każdej kombinacji bitów
+      odpowiada inna suma:
+
+      | Bity | Suma | U<sub>out</sub> |
+      |---|---|---|
+      | 000 | 0 V | 0 V |
+      | 001 | 1 V | −1 V |
+      | 010 | 2 V | −2 V |
+      | 011 | 3 V | −3 V |
+      | 100 | 4 V | −4 V |
+      | 101 | 5 V | −5 V |
+      | 110 | 6 V | −6 V |
+      | 111 | 7 V | −7 V |
+
+      To dokładnie zasada działania przetwornika cyfrowo-analogowego. W prawdziwym DAC
+      zamiast źródeł napięć są przełączniki, a w niektórych konstrukcjach drabinka R-2R.
+  - type: formula
+    html: "U<sub>out</sub> = −(U<sub>1</sub> + U<sub>2</sub> + U<sub>3</sub>) = −(1 + 2 + 4) V = −7 V"
+  - type: circuit
+    circuit: l6-sumator-dac
+    title: "Sumator: 1 V, 2 V i 4 V przez 10 kΩ"
+    md: |
+      Trzy źródła napięć, trzy rezystory 10 kΩ i sprzężenie zwrotne 10 kΩ. Wzmacniacz
+      TL071 zasilany z ±9 V, więc −7 V mieści się w zakresie wyjściowym.
+    tasks:
+      - "Uruchom symulację. W panelu **DC** sprawdź, że `out` = −7 V, a węzeł „−” = 0 V."
+      - "Policz: −(1 + 2 + 4) = −7 V. Zgadza się."
+      - "Zmień V3 z 4 V na 0 V. Wyjście powinno wynieść −3 V (bity 011)."
+      - "Ustaw V1 = 0, V2 = 0, V3 = 4 V. Wyjście −4 V (bit 100)."
+      - "Zmień R4 (sprzężenie zwrotne) z 10 kΩ na 5 kΩ. Wzór daje U<sub>out</sub> = −0,5·(1+2+4) = −3,5 V. Sprawdź."
+      - "Zastanów się, co się stanie, gdy wzmocnienie będzie zbyt duże: przy R4 = 20 kΩ teoretycznie −14 V, ale zasilanie ±9 V tego nie pozwoli."
+  - type: quiz
+    question: "Wejścia sumatora mają napięcia 1 V, 2 V i 4 V, wszystkie rezystory są równe. Jakie jest wyjście?"
+    options:
+      - "−7 V"
+      - "−5 V"
+      - "7 V"
+      - "0 V"
+    answer: 0
+    explain: "Sumator odwracający z równymi rezystorami daje −(V1+V2+V3) = −(1+2+4) = −7 V."
+  - type: quiz
+    question: "Dla bitów 101 (V1 = 1 V, V2 = 0 V, V3 = 4 V) wyjście sumatora wynosi…"
+    options:
+      - "−4 V"
+      - "−5 V"
+      - "−6 V"
+      - "−7 V"
+    answer: 1
+    explain: "Bity 101 to 1 + 4 = 5. Wyjście to −5 V."
+  - type: quiz
+    question: "Dlaczego wyjście jest ujemne?"
+    options:
+      - "Bo źródła mają ujemne napięcia"
+      - "Bo sygnały podane są na wejście odwracające"
+      - "Bo wzmacniacz ma ujemne zasilanie"
+      - "Bo rezystory są zbyt duże"
+    answer: 1
+    explain: "Wejście „−” wzmacniacza odwraca fazę (znak). Można to poprawić, dodając na wyjściu drugi wzmacniacz odwracający o wzmocnieniu −1."
+  - type: note
+    tone: info
+    title: "Od sumatora do DAC"
+    md: |
+      W prawdziwym DAC bity nie są źródłami napięć, tylko kluczami włączającymi prąd
+      albo napięcie odniesienia. Sumator wciąż jest sercem układu: dodaje ważone składniki.
+      Dlatego wzmacniacz operacyjny jest jednym z najważniejszych elementów w torze
+      cyfrowo-analogowym.

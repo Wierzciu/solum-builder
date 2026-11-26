@@ -1,0 +1,101 @@
+id: l1-prawo-ohma
+order: 10
+lecture: L1
+lecture_title: Wprowadzenie do elektroniki
+title: Prąd, napięcie, opór i prawo Ohma
+slides: "L1, slajdy 25–41"
+minutes: 25
+summary: "Od ładunku do prawa Ohma i mocy: dlaczego w obwodzie szeregowym napięcie dzieli się proporcjonalnie do rezystancji i skąd bierze się prąd 3 mA."
+objectives:
+  - "Rozróżniasz ładunek, prąd, napięcie i rezystancję oraz znasz ich jednostki."
+  - "Stosujesz prawo Ohma i wzory na moc."
+  - "Obliczasz prąd i spadki napięć w obwodzie szeregowym."
+  - "Odczytujesz napięcia węzłów w panelu DC symulatora."
+circuit: l1-prawo-ohma
+circuit_title: Dzielnik napięcia 1 kΩ / 2 kΩ
+source: "Podstawy_Elektroniki.pdf, wykład L1 (slajdy 25–41)"
+blocks:
+  - type: text
+    md: |
+      ## Cztery podstawowe pojęcia
+
+      **Ładunek** <em>Q</em> mierzymy w kulombach (C). **Prąd** to uporządkowany ruch ładunku:
+      ile ładunku przepływa przez przekrój w jednostce czasu.
+
+      **Napięcie** <em>U</em> to różnica potencjałów między dwoma punktami — „ciśnienie”, które
+      popycha ładunek. **Rezystancja** <em>R</em> mówi, jak mocno materiał przeciwstawia się
+      przepływowi prądu.
+
+      W praktyce posługujemy się przedrostkami:
+
+      | Przedrostek | Symbol | Mnożnik |
+      |---|---|---|
+      | kilo | k | 10<sup>3</sup> |
+      | mili | m | 10<sup>−3</sup> |
+      | mikro | µ | 10<sup>−6</sup> |
+      | nano | n | 10<sup>−9</sup> |
+      | piko | p | 10<sup>−12</sup> |
+
+      Dlatego 4k7 to 4700 Ω, a 100n to 100 · 10⁻⁹ F = 100 nF.
+  - type: formula
+    html: "U = I · R"
+  - type: formula
+    html: "I = U / R &nbsp;&nbsp;&nbsp; R = U / I"
+  - type: text
+    md: |
+      Prawo Ohma w tej postaci działa dla rezystora liniowego. W obwodzie szeregowym
+      **prąd jest wszędzie taki sam**, a napięcie źródła dzieli się na rezystancjach
+      proporcjonalnie do ich wartości:
+
+      <div class="formula-line">U<sub>1</sub> = U · R<sub>1</sub> / (R<sub>1</sub> + R<sub>2</sub>) &nbsp;&nbsp;&nbsp; U<sub>2</sub> = U · R<sub>2</sub> / (R<sub>1</sub> + R<sub>2</sub>)</div>
+
+      Moc wydzielana na rezystorze to iloczyn napięcia i prądu. Można ją zapisać na trzy
+      sposoby — wybierz ten, który ma najmniej niewiadomych.
+  - type: formula
+    html: "P = U · I = I<sup>2</sup> · R = U<sup>2</sup> / R"
+  - type: circuit
+    circuit: l1-prawo-ohma
+    title: "Obwód: 9 V, 1 kΩ i 2 kΩ"
+    md: |
+      Rezystory są połączone szeregowo. `in` to górny węzeł (9 V), `out` to węzeł między
+      R1 i R2, a dolny koniec R2 jest na masie. Prąd płynie od źródła przez R1, przez R2
+      i wraca do źródła.
+    tasks:
+      - "Kliknij **Uruchom** i odczytaj w panelu **DC**: `in` = 9 V, `out` = 6 V."
+      - "Policz prąd: I = 9 V / (1 kΩ + 2 kΩ) = 3 mA."
+      - "Sprawdź spadki: U<sub>R1</sub> = 3 mA · 1 kΩ = 3 V, U<sub>R2</sub> = 3 mA · 2 kΩ = 6 V. Suma = 9 V."
+      - "Policz moc: P<sub>R1</sub> = U²/R = 3²/1000 = 9 mW, P<sub>R2</sub> = 6²/2000 = 18 mW. Cała moc: 27 mW."
+  - type: quiz
+    question: "Napięcie 9 V przyłożono do szeregowego połączenia 1 kΩ i 2 kΩ. Jaki prąd płynie w obwodzie?"
+    options:
+      - "1 mA"
+      - "3 mA"
+      - "4,5 mA"
+      - "9 mA"
+    answer: 1
+    explain: "Rezystancja zastępcza to 3 kΩ. Z prawa Ohma: I = 9 V / 3000 Ω = 0,003 A = 3 mA."
+  - type: quiz
+    question: "Ile mocy wydziela się na rezystorze R2 = 2 kΩ, gdy płynie przez niego 3 mA?"
+    options:
+      - "6 mW"
+      - "9 mW"
+      - "18 mW"
+      - "27 mW"
+    answer: 2
+    explain: "P = I²R = (0,003 A)² · 2000 Ω = 0,000009 · 2000 = 0,018 W = 18 mW."
+  - type: quiz
+    question: "Zwiększasz R2 z 2 kΩ do 3 kΩ, zostawiając R1 = 1 kΩ i źródło 9 V. Co się dzieje z napięciem `out`?"
+    options:
+      - "Spada, bo większy rezystor daje większy spadek napięcia"
+      - "Rośnie, bo większa rezystancja R2 przejmuje większą część napięcia"
+      - "Nie zmienia się, bo prąd jest stały"
+      - "Rośnie do 9 V"
+    answer: 1
+    explain: "W dzielniku napięcie na R2 to U·R2/(R1+R2). Przy R2 = 3 kΩ: 9·3/4 = 6,75 V. Prąd spada do 2,25 mA, ale udział R2 w sumie rezystancji rośnie."
+  - type: note
+    tone: info
+    title: "Dlaczego panel DC pokazuje 6 V, a nie 3 V?"
+    md: |
+      Kolejność ma znaczenie: `out` jest **między** rezystorami, więc mierzymy napięcie na
+      R2 względem masy. Na R1 odkłada się 3 V, więc od góry (9 V) do `out` jest 3 V, a od
+      `out` do masy 6 V.

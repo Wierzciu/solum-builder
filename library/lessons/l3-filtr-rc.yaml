@@ -1,0 +1,98 @@
+id: l3-filtr-rc
+order: 50
+lecture: L3
+lecture_title: Obwody DC — obliczenia i symulacje
+title: Filtr RC i częstotliwość graniczna
+slides: "L3, slajdy 18–22; L5, slajdy 2–4"
+minutes: 30
+summary: "Rezystor i kondensator tworzą najprostszy filtr dolnoprzepustowy. Zobaczysz, gdzie wypada −3 dB i jak zmiana R albo C przesuwa to miejsce."
+objectives:
+  - "Obliczasz częstotliwość graniczną f<sub>c</sub> = 1/(2πRC)."
+  - "Rozumiesz reaktancję kondensatora i jej zależność od częstotliwości."
+  - "Odczytujesz charakterystykę częstotliwościową w panelu Częstotliwość."
+circuit: l3-filtr-rc
+circuit_title: Filtr dolnoprzepustowy 10 kΩ / 100 nF
+source: "Podstawy_Elektroniki.pdf, wykład L3 (slajdy 18–22) i L5 (slajdy 2–4)"
+blocks:
+  - type: text
+    md: |
+      ## Prąd przemienny w kondensatorze
+
+      Kondensator nie przewodzi prądu stałego — po naładowaniu prąd spada do zera. Przy
+      napięciu zmiennym sytuacja się zmienia: im szybciej zmienia się napięcie, tym większy
+      prąd płynie.
+
+      <div class="formula-line">i = C · du/dt</div>
+
+      Dla sinusa o częstotliwości f kondensator zachowuje się jak rezystancja pozorna
+      (reaktancja):
+
+      <div class="formula-line">X<sub>C</sub> = 1 / (2π f C)</div>
+
+      Przy niskich częstotliwościach X<sub>C</sub> jest duże — kondensator „blokuje”.
+      Przy wysokich jest małe — kondensator „zwiera” sygnał do masy.
+
+      ## Filtr dolnoprzepustowy
+
+      R w szeregu, C do masy. Wzmocnienie napięciowe:
+
+      <div class="formula-line">|H(f)| = 1 / √(1 + (f/f<sub>c</sub>)²)</div>
+
+      Częstotliwość graniczna to miejsce, w którym wzmocnienie spada o 3 dB (do 0,707
+      wartości):
+
+      <div class="formula-line">f<sub>c</sub> = 1 / (2π R C)</div>
+  - type: formula
+    html: "f<sub>c</sub> = 1 / (2π · 10 kΩ · 100 nF) ≈ 159 Hz"
+  - type: text
+    md: |
+      Dla R = 10 kΩ i C = 100 nF dostajemy około **159 Hz**. Poniżej tej częstotliwości
+      sygnał przechodzi prawie bez zmian; powyżej jest coraz mocniej tłumiony — 20 dB na
+      dekadę. Na samej granicy faza wynosi −45°.
+  - type: circuit
+    circuit: l3-filtr-rc
+    title: "Filtr RC: 10 kΩ i 100 nF"
+    md: |
+      Wejście to źródło sygnału (model wejścia gitarowego), wyjście idzie do amp 1 MΩ.
+      Panel **Częstotliwość** pokazuje wzmocnienie od wejścia do `out` w funkcji częstotliwości.
+    tasks:
+      - "Uruchom symulację i otwórz panel **Częstotliwość**. Znajdź punkt, w którym krzywa spada o 3 dB — powinno to być około 159 Hz."
+      - "Sprawdź obliczenie: f<sub>c</sub> = 1/(2π · 10 000 · 100·10⁻⁹) ≈ 159,2 Hz."
+      - "Zmień C na 10 nF. Nowe f<sub>c</sub> = 1592 Hz. Czy krzywa przesunęła się w prawo?"
+      - "Przywróć C = 100 nF i zmień R na 1 kΩ. f<sub>c</sub> znowu ≈ 1592 Hz. Co jest ważniejsze — sam iloczyn RC, czy osobne wartości?"
+      - "W panelu **Oscyloskop** obejrzyj przebieg przy 1 kHz. Amplituda na wyjściu powinna być znacznie mniejsza niż na wejściu."
+  - type: quiz
+    question: "Filtr RC ma R = 1 kΩ i C = 100 nF. Jaka jest częstotliwość graniczna?"
+    options:
+      - "159 Hz"
+      - "1,59 kHz"
+      - "15,9 kHz"
+      - "159 kHz"
+    answer: 1
+    explain: "f = 1/(2π · 1000 · 100·10⁻⁹) = 1/(2π · 10⁻⁴) ≈ 1592 Hz, czyli 1,59 kHz."
+  - type: quiz
+    question: "Co się stanie z częstotliwością graniczną, gdy zwiększysz pojemność z 100 nF do 1 µF?"
+    options:
+      - "Wzrośnie dziesięciokrotnie"
+      - "Zmniejszy się dziesięciokrotnie"
+      - "Nie zmieni się"
+      - "Wzrośnie dwukrotnie"
+    answer: 1
+    explain: "f<sub>c</sub> jest odwrotnie proporcjonalna do C. Dziesięć razy większa pojemność daje dziesięć razy mniejszą częstotliwość (ok. 15,9 Hz)."
+  - type: quiz
+    question: "Przy częstotliwości znacznie większej od f<sub>c</sub> filtr RC zachowuje się jak…"
+    options:
+      - "dzielnik napięcia z R i małą reaktancją C"
+      - "przerwa w obwodzie"
+      - "wzmacniacz"
+      - "źródło napięcia"
+    answer: 0
+    explain: "Powyżej f<sub>c</sub> X<sub>C</sub> jest małe, więc kondensator zwiera wyjście do masy przez małą impedancję. Sygnał jest tłumiony."
+  - type: note
+    tone: info
+    title: "Wartość skuteczna"
+    md: |
+      Dla sinusa o amplitudzie U<sub>peak</sub> wartość skuteczna wynosi
+      U<sub>RMS</sub> = U<sub>peak</sub>/√2. To ta wartość grzeje rezystor i to ją podają
+      multimetry. W symulatorze panel **Oscyloskop** pokazuje przebieg, a **Sonda** — wartości
+      szczytowe; nie mieszaj ich w obliczeniach.

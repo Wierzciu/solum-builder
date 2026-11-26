@@ -1,0 +1,195 @@
+{
+  "schema": 41,
+  "id": "l3-dzielnik-obciazony",
+  "name": "Dzielnik napięcia z obciążeniem",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "description": "Dzielnik R1 = R2 = 10 kΩ zasilany z 9 V daje bez obciążenia 4,5 V. Doleczony równolegle R3 = 10 kΩ obciąża dzielnik i napięcie spada do 3 V.",
+  "tags": [
+    "lekcja",
+    "DC",
+    "dzielnik"
+  ],
+  "parts": [
+    {
+      "ref": "V1",
+      "type": "vsource",
+      "value": 9.0
+    },
+    {
+      "ref": "R1",
+      "pos": [
+        100,
+        -20
+      ],
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "R2",
+      "pos": [
+        180,
+        60
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "R3",
+      "pos": [
+        280,
+        60
+      ],
+      "rot": 90,
+      "type": "resistor",
+      "value": "10k"
+    },
+    {
+      "ref": "OUT",
+      "pos": [
+        380,
+        -20
+      ],
+      "type": "amp"
+    }
+  ],
+  "wires": [
+    {
+      "from": [
+        0,
+        -20
+      ],
+      "to": [
+        80,
+        -20
+      ]
+    },
+    {
+      "from": [
+        120,
+        -20
+      ],
+      "to": [
+        280,
+        -20
+      ]
+    },
+    {
+      "from": [
+        280,
+        -20
+      ],
+      "to": [
+        360,
+        -20
+      ]
+    },
+    {
+      "from": [
+        180,
+        -20
+      ],
+      "to": [
+        180,
+        40
+      ]
+    },
+    {
+      "from": [
+        180,
+        -20
+      ],
+      "to": [
+        280,
+        -20
+      ]
+    },
+    {
+      "from": [
+        280,
+        -20
+      ],
+      "to": [
+        280,
+        40
+      ]
+    },
+    {
+      "from": [
+        180,
+        80
+      ],
+      "to": [
+        180,
+        120
+      ]
+    },
+    {
+      "from": [
+        280,
+        80
+      ],
+      "to": [
+        280,
+        120
+      ]
+    },
+    {
+      "from": [
+        0,
+        20
+      ],
+      "to": [
+        0,
+        60
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "net": "in",
+      "pos": [
+        40,
+        -20
+      ]
+    },
+    {
+      "net": "out",
+      "pos": [
+        240,
+        -20
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        0,
+        60
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        180,
+        120
+      ]
+    },
+    {
+      "net": "GND",
+      "pos": [
+        280,
+        120
+      ]
+    }
+  ],
+  "probes": {
+    "in": "in",
+    "out": "out"
+  },
+  "net_notes": {
+    "out": "Węzeł dzielnika obciążony R3; bez R3 byłoby tu 4,5 V, z R3 jest 3 V."
+  }
+}

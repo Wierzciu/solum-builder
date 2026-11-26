@@ -1,0 +1,87 @@
+id: l1-szeregowo-rownolegle
+order: 20
+lecture: L1
+lecture_title: Wprowadzenie do elektroniki
+title: Szeregowe i równoległe łączenie rezystorów
+slides: "L1, slajdy 21–23 i 40–41"
+minutes: 25
+summary: "Jak liczyć rezystancję zastępczą, dlaczego napięcie na gałęziach równoległych jest takie samo i kiedy dzielnik prądu zastępuje dzielnik napięcia."
+objectives:
+  - "Obliczasz rezystancję zastępczą połączenia szeregowego i równoległego."
+  - "Stosujesz dzielnik napięcia i dzielnik prądu."
+  - "Sprawdzasz bilans prądów i napięć w prostym obwodzie."
+circuit: l1-szeregowo-rownolegle
+circuit_title: 1 kΩ + (2 kΩ || 2 kΩ)
+source: "Podstawy_Elektroniki.pdf, wykład L1 (slajdy 21–23, 40–41)"
+blocks:
+  - type: text
+    md: |
+      ## Szeregowo
+
+      W połączeniu szeregowym **prąd jest wspólny**, a napięcia się dodają:
+
+      <div class="formula-line">R<sub>eq</sub> = R<sub>1</sub> + R<sub>2</sub> + … + R<sub>n</sub></div>
+
+      To dlatego w poprzedniej lekcji 1 kΩ i 2 kΩ dały 3 kΩ, a prąd był taki sam w obu
+      rezystorach.
+
+      ## Równolegle
+
+      W połączeniu równoległym **napięcie jest wspólne**, a prądy się rozdzielają:
+
+      <div class="formula-line">1/R<sub>eq</sub> = 1/R<sub>1</sub> + 1/R<sub>2</sub> + … + 1/R<sub>n</sub></div>
+
+      Dla dwóch rezystorów wygodny jest wzór:
+
+      <div class="formula-line">R<sub>eq</sub> = R<sub>1</sub> · R<sub>2</sub> / (R<sub>1</sub> + R<sub>2</sub>)</div>
+
+      Dwa jednakowe rezystory równolegle dają **połowę** wartości. Trzy jednakowe — jedną
+      trzecią. Łączenie równoległe zawsze zmniejsza rezystancję.
+  - type: formula
+    html: "I<sub>1</sub> = I<sub>total</sub> · R<sub>eq</sub> / R<sub>1</sub> &nbsp;&nbsp;&nbsp; I<sub>2</sub> = I<sub>total</sub> · R<sub>eq</sub> / R<sub>2</sub>"
+  - type: circuit
+    circuit: l1-szeregowo-rownolegle
+    title: "Obwód: 1 kΩ szeregowo z dwoma 2 kΩ"
+    md: |
+      R1 = 1 kΩ jest w szeregu z równoległym połączeniem R2 = R3 = 2 kΩ. `out` to górny
+      węzeł gałęzi równoległych.
+    tasks:
+      - "Policz: R2 || R3 = 2k · 2k / (2k + 2k) = 1 kΩ. Całość: 1k + 1k = 2 kΩ."
+      - "Prąd całkowity: I = 9 V / 2 kΩ = 4,5 mA."
+      - "Napięcie `out`: U = I · R<sub>eq(równoległe)</sub> = 4,5 mA · 1 kΩ = 4,5 V. Sprawdź w panelu **DC**."
+      - "Prądy gałęzi: każda ma 2 kΩ i 4,5 V, więc 2,25 mA. Razem 4,5 mA — zgadza się z prądem całkowitym."
+      - "Zmień R2 i R3 na 1 kΩ. Policz nowe R<sub>eq</sub> (500 Ω), prąd (6 mA) i napięcie `out` (3 V), a potem sprawdź w symulatorze."
+  - type: quiz
+    question: "Dwa rezystory po 10 Ω połączono równolegle. Jaka jest rezystancja zastępcza?"
+    options:
+      - "5 Ω"
+      - "10 Ω"
+      - "20 Ω"
+      - "100 Ω"
+    answer: 0
+    explain: "Dwa jednakowe rezystory równolegle dają połowę: 10 Ω / 2 = 5 Ω. Wzór: 10·10/(10+10) = 5 Ω."
+  - type: quiz
+    question: "W obwodzie z lekcji przez R1 płynie 4,5 mA. Ile prądu płynie przez R2?"
+    options:
+      - "0 mA"
+      - "1,5 mA"
+      - "2,25 mA"
+      - "4,5 mA"
+    answer: 2
+    explain: "Prąd dzieli się równo między dwie jednakowe gałęzie: 4,5 mA / 2 = 2,25 mA. Napięcie na obu gałęziach jest takie samo (4,5 V)."
+  - type: quiz
+    question: "Chcesz uzyskać 3 kΩ z trzech rezystorów po 9 kΩ. Jak je połączyć?"
+    options:
+      - "Wszystkie szeregowo"
+      - "Wszystkie równolegle"
+      - "Dwa równolegle, a trzeci z nimi szeregowo"
+      - "Nie da się"
+    answer: 1
+    explain: "Trzy jednakowe rezystory równolegle dają 9 kΩ / 3 = 3 kΩ. Szeregowo byłoby 27 kΩ, a układ mieszany dałby 9 + 4,5 = 13,5 kΩ."
+  - type: note
+    tone: tip
+    title: "Dzielnik prądu — intuicja"
+    md: |
+      Prąd wybiera drogę o mniejszej rezystancji. Dlatego w dzielniku prądu **większa
+      gałąź dostaje mniejszy prąd**. Wzór I<sub>i</sub> = I<sub>total</sub> · R<sub>eq</sub>/R<sub>i</sub>
+      mówi dokładnie to: im większe R<sub>i</sub>, tym mniejszy ułamek prądu.

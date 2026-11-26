@@ -1,0 +1,102 @@
+id: l6-przedwzmacniacz
+order: 100
+lecture: L6
+lecture_title: Tranzystor i wzmacniacz operacyjny w praktyce
+title: Przedwzmacniacz tranzystorowy klasy A
+slides: "L6, slajdy 2–23"
+minutes: 40
+summary: "Projekt z wykładu 6: 9 V, wzmocnienie 10, pasmo od 20 Hz. Liczymy punkt pracy, rezystory i kondensatory sprzęgające, a potem sprawdzamy wszystko w symulatorze."
+objectives:
+  - "Projektujesz punkt pracy wzmacniacza CE na podstawie wymagań."
+  - "Obliczasz wzmocnienie, rezystancję wejściową i wyjściową."
+  - "Dobierasz kondensatory sprzęgające dla dolnej częstotliwości granicznej."
+circuit: l6-przedwzmacniacz
+circuit_title: Wzmacniacz CE o wzmocnieniu ≈ 10
+source: "Podstawy_Elektroniki.pdf, wykład L6 (slajdy 2–23)"
+blocks:
+  - type: text
+    md: |
+      ## Wymagania z wykładu
+
+      | Parametr | Wartość |
+      |---|---|
+      | Zasilanie | 9 V |
+      | Rezystancja wyjściowa | 10 kΩ |
+      | Wzmocnienie | 10 |
+      | Pasmo | 20 Hz – 20 kHz |
+
+      To klasyczny wzmacniacz klasy A w układzie wspólnego emitera. Punkt pracy powinien
+      leżeć możliwie blisko połowy zakresu, żeby sygnał miał symetryczne miejsce na wahania.
+
+      ## Punkt pracy
+
+      Dzielnik bazy R1 = 150 kΩ i R2 = 22 kΩ daje:
+
+      <div class="formula-line">U<sub>B</sub> = 9 V · 22k/(150k + 22k) ≈ 1,15 V</div>
+
+      Na emiterze jest o 0,7 V mniej: U<sub>E</sub> ≈ 0,45 V. Prąd emitera:
+
+      <div class="formula-line">I<sub>E</sub> = U<sub>E</sub>/R<sub>E</sub> = 0,45 V/1 kΩ ≈ 0,45 mA</div>
+
+      Kolektor: U<sub>C</sub> = 9 V − I<sub>C</sub>·R<sub>C</sub> ≈ 9 − 4,5 = 4,5 V. To
+      środek zakresu — dobrze.
+
+      ## Wzmocnienie
+
+      Bez kondensatora bocznikującego emiter:
+
+      <div class="formula-line">A<sub>v</sub> ≈ −R<sub>C</sub>/(R<sub>E</sub> + r<sub>e</sub>) &nbsp;&nbsp;&nbsp; r<sub>e</sub> = U<sub>T</sub>/I<sub>E</sub> ≈ 26 mV/0,45 mA ≈ 58 Ω</div>
+
+      Czyli A<sub>v</sub> ≈ −10 000/1058 ≈ −9,5, blisko założonego −10. Rezystancja
+      wejściowa to w przybliżeniu R1 || R2 || β(R<sub>E</sub> + r<sub>e</sub>), rzędu
+      15–20 kΩ. Rezystancja wyjściowa to prawie R<sub>C</sub> = 10 kΩ.
+  - type: formula
+    html: "A<sub>v</sub> ≈ −R<sub>C</sub>/R<sub>E</sub> = −10 &nbsp;&nbsp;&nbsp; r<sub>e</sub> = 26 mV/I<sub>E</sub>"
+  - type: circuit
+    circuit: l6-przedwzmacniacz
+    title: "Przedwzmacniacz: R1 150k, R2 22k, Rc 10k, Re 1k"
+    md: |
+      Wejście przez C1 = 1 µF, wyjście przez C2 = 1 µF do obciążenia 10 kΩ. Emiter nie
+      jest zbocznikowany kondensatorem, więc R4 stabilizuje punkt pracy i jednocześnie
+      ustala wzmocnienie.
+    tasks:
+      - "Uruchom symulację. W panelu **DC** sprawdź: baza ≈ 1,11 V, emiter ≈ 0,46 V, kolektor ≈ 4,37 V."
+      - "Policz prąd emitera: 0,46 mA. Spadek na R3: 4,6 V. Kolektor: 9 − 4,6 = 4,4 V. Zgadza się."
+      - "W panelu **Częstotliwość** odczytaj wzmocnienie w środku pasma — powinno być blisko 20 dB (czyli 10×)."
+      - "Znajdź dolną częstotliwość graniczną. C1 z rezystancją wejściową tworzy filtr górnoprzepustowy: f ≈ 1/(2π·R<sub>in</sub>·C1)."
+      - "Zmień C1 na 100 nF. Dolna granica przesunie się dziesięć razy w górę — pasmo zawęzi się od dołu."
+      - "Zmień R3 na 4,7 kΩ. Wzmocnienie spadnie do około 4,7, ale punkt pracy przesunie się w stronę nasycenia. Sprawdź oba efekty."
+  - type: quiz
+    question: "Po co w układzie CE jest kondensator C1 na wejściu?"
+    options:
+      - "Aby zwiększyć wzmocnienie"
+      - "Aby odciąć składową stałą i nie zmieniać punktu pracy źródła"
+      - "Aby zmniejszyć rezystancję wejściową"
+      - "Aby zasilić bazę"
+    answer: 1
+    explain: "C1 przepuszcza sygnał zmienny, a blokuje stałe napięcie. Dzięki temu źródło sygnału nie przesuwa punktu pracy bazy."
+  - type: quiz
+    question: "Wzmacniacz ma Rc = 10 kΩ i Re = 1 kΩ (bez bocznika). Jakie jest przybliżone wzmocnienie?"
+    options:
+      - "1"
+      - "10"
+      - "100"
+      - "1000"
+    answer: 1
+    explain: "A ≈ −Rc/Re = −10. Wartość bezwzględna to 10, czyli około 20 dB."
+  - type: quiz
+    question: "Co da dołączenie kondensatora równolegle do Re?"
+    options:
+      - "Zmniejszy wzmocnienie dla prądu stałego"
+      - "Zwiększy wzmocnienie dla sygnału zmiennego, nie zmieniając punktu pracy"
+      - "Zwiększy rezystancję wyjściową"
+      - "Odłączy tranzystor"
+    answer: 1
+    explain: "Kondensator zwiera Re dla częstotliwości sygnału, więc wzmocnienie rośnie do około −Rc/r_e. Dla prądu stałego kondensator jest przerwą, więc punkt pracy się nie zmienia."
+  - type: note
+    tone: tip
+    title: "Dlaczego akurat 4,5 V na kolektorze?"
+    md: |
+      Przy 4,5 V sygnał może się wahać w obie strony o podobną wartość, zanim tranzystor
+      wejdzie w nasycenie albo odcięcie. To maksymalizuje zakres liniowy. W praktyce
+      wybiera się nieco więcej lub mniej, zależnie od spodziewanej amplitudy.

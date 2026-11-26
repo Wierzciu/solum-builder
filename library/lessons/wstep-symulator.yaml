@@ -1,0 +1,88 @@
+id: wstep-symulator
+order: 0
+lecture: WSTĘP
+lecture_title: Zanim zaczniesz
+title: Jak czytać te lekcje i pracować z symulatorem
+slides: ""
+minutes: 15
+summary: "Krótki start: co jest na ekranie Solum Builder, jak uruchomić obwód, jak go sondować i jak wracać do teorii z wykładów."
+objectives:
+  - "Wiesz, gdzie są schemat, panel wyników i pokrętła."
+  - "Uruchamiasz symulację i odczytujesz napięcie w wybranym punkcie."
+  - "Rozumiesz, że każda lekcja kończy się zadaniem i krótkim quizem."
+circuit: wstep-dzielnik
+circuit_title: Dzielnik napięcia z potencjometrem
+source: "Wstęp do kursu; obwód własny"
+blocks:
+  - type: text
+    md: |
+      Ten kurs to **12 krótkich lekcji** zbudowanych z Twoich materiałów: wykładów
+      L1, L3, L4, L5 i L6. Każda lekcja ma tę samą strukturę:
+
+      1. **Trochę teorii** — pojęcia, wzory i oznaczenia z wykładu.
+      2. **Obwód w symulatorze** — otwierasz gotowy przykład i zmieniasz go jak w laboratorium.
+      3. **Zadania** — konkretne pomiary albo obliczenia do wykonania.
+      4. **Quiz** — trzy–cztery pytania sprawdzają, czy rozumiesz, a nie tylko pamiętasz.
+
+      Symulator jest tu narzędziem, nie celem. Ma pokazać, **dlaczego** wzór działa:
+      klikasz węzeł i widzisz napięcie, które wcześniej policzyłeś na kartce.
+  - type: note
+    tone: tip
+    title: "Jak otworzyć obwód"
+    md: |
+      Przy każdym obwodzie jest przycisk **Otwórz w symulatorze**. Otwiera on kopię
+      przykładowego układu — możesz w niej zmieniać wartości, przesuwać części i psuć go
+      bez konsekwencji. Oryginał lekcji zostaje nietknięty.
+  - type: text
+    md: |
+      ## Co jest na ekranie
+
+      - **Schemat** (po lewej) — części i przewody. Kliknięcie przewodu albo nóżki części
+        wybiera punkt pomiarowy.
+      - **Problemy** — reguły symulatora. Ostrzeżenia nie zawsze znaczą błąd; przy prostych
+        obwodach DC zobaczysz np. „DC at the output”. To normalne, bo ten układ nie ma
+        kondensatora sprzęgającego.
+      - **DC** — napięcia w każdym węźle po ustaleniu się stanu.
+      - **Sonda** — wartości w wybranym punkcie: wzmocnienie, szczyty, ewentualne obcięcie.
+      - **Częstotliwość** — charakterystyka częstotliwościowa od 10 Hz do 30 kHz.
+      - **Oscyloskop** — przebieg w czasie, dla sygnału z wejścia gitarowego.
+      - **Pokrętła i przełączniki** — pokrętła; w lekcjach podstaw elektroniki to zwykle potencjometr.
+
+      Nie musisz rozumieć wszystkich paneli od razu. W kolejnych lekcjach będziemy
+      włączać je po kolei.
+  - type: circuit
+    circuit: wstep-dzielnik
+    title: "Pierwszy obwód: dzielnik z potencjometrem"
+    md: |
+      Źródło 9 V, rezystor 10 kΩ i potencjometr 10 kΩ. Suwak potencjometru jest
+      wyjściem. Gdy suwak jest na dole, wyjście ma 0 V; gdy na górze — 4,5 V, bo R1
+      wciąż jest w obwodzie.
+    tasks:
+      - "Kliknij **Uruchom**, a potem w panelu **DC** odczytaj napięcie `out`."
+      - "W panelu **Pokrętła i przełączniki** ustaw potencjometr na 0%, 50% i 100%. Zapisz trzy napięcia: 0 V, 2,25 V i 4,5 V."
+      - "Wyjaśnij, dlaczego na górze nie ma 9 V. Narysuj dzielnik: R1 = 10 kΩ i górna część potencjometru tworzą rezystancję szeregową."
+  - type: quiz
+    question: "Potencjometr 10 kΩ jest ustawiony w połowie. Ile wynosi rezystancja między jego lewym końcem a suwakiem?"
+    options:
+      - "0 Ω"
+      - "5 kΩ"
+      - "10 kΩ"
+      - "20 kΩ"
+    answer: 1
+    explain: "Suwak w połowie drogi daje połowę rezystancji, czyli 5 kΩ. Druga połowa to także 5 kΩ; razem 10 kΩ."
+  - type: quiz
+    question: "Co się stanie z napięciem `out`, gdy suwak przesuniesz na samą górę?"
+    options:
+      - "Spadnie do 0 V"
+      - "Wzrośnie do 4,5 V"
+      - "Wzrośnie do 9 V"
+      - "Nie zmieni się"
+    answer: 1
+    explain: "Na górze suwak łączy się z górnym końcem potencjometru. Dzielnik to teraz R1 = 10 kΩ i całe 10 kΩ potencjometru, więc wyjście ma 9 V · 10/(10+10) = 4,5 V. R2 = 1 MΩ obciąża ten węzeł tylko nieznacznie."
+  - type: note
+    tone: info
+    title: "Dlaczego w obwodzie jest R2 = 1 MΩ?"
+    md: |
+      Sam suwak podłączony tylko do etykiety `out` nie zamyka obwodu. R2 daje ścieżkę do
+      masy i sprawia, że węzeł ma dobrze określony potencjał. W prawdziwym układzie tę rolę
+      przejmuje wejście następnego stopnia.
