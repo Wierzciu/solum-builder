@@ -688,6 +688,8 @@ def test_the_hot_keys_list_matches_what_the_keys_do(js: Page) -> None:
             "find",
             "save",
             "run",
+            "leftPane",  # [ and ] (D-408)
+            "rightPane",
         ]
     )
     assert got["parts"] == got["palette"] == 17
@@ -696,7 +698,7 @@ def test_the_hot_keys_list_matches_what_the_keys_do(js: Page) -> None:
 def test_palette_hotkeys_are_unique(js: Page) -> None:
     keys = run(js, "const e = await m('editor/edit.js'); return e.PALETTE.map((p) => p.key);")
     keys = [k for k in keys if k is not None]  # a tile may have none (Quad op-amp, Inductor)
-    reserved = {"l", "g", "w", "x", "b"}  # the keys keys.js takes
+    reserved = {"l", "g", "w", "x", "b", "[", "]"}  # the keys keys.js takes
     assert len(keys) == len(set(keys)) and not reserved & set(keys)
 
 
