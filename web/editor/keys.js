@@ -3,7 +3,8 @@
  * Part hotkeys come from the palette (R resistor, C capacitor…). Space rotates (R is the
  * resistor, D-053); L a net label, X a text block (D-091); B inserts a block, Ctrl+C/V copy and paste the selection, Ctrl+A
  * selects everything (D-072), Ctrl+F finds a part by ref. They're shortcuts: drag-and-drop is the main way in, and the keys show
- * only in tooltips (D-057). Keys typed into a form field never reach here.
+ * only in tooltips (D-057). [ and ] hide or show the left and right side panes in either view
+ * (D-408). Keys typed into a form field never reach here.
  *
  * @typedef {{key: string, ctrl?: boolean, meta?: boolean, shift?: boolean, alt?: boolean}} Press
  * @typedef {{action: string, type?: string}} Action
@@ -18,6 +19,9 @@ import { PALETTE } from "./edit.js";
 export function actionFor(press) {
   const key = press.key.length === 1 ? press.key.toLowerCase() : press.key;
   const mod = press.ctrl || press.meta;
+  // [ and ] hide or show a side pane, in both views (D-408); on some keyboards they're
+  // typed with Alt (Option+8 on a Portuguese Mac), so Alt doesn't stop them
+  if (!mod && (key === "[" || key === "]")) return { action: key === "[" ? "leftPane" : "rightPane" };
   if (mod && !press.alt) {
     if (key === "z") return { action: press.shift ? "redo" : "undo" };
     if (key === "y") return { action: "redo" };
@@ -112,6 +116,10 @@ export function hotkeyGroups() {
       { keys: "Ctrl+F", does: "Find a part by its ref", press: { key: "f", ctrl: true }, action: "find" },
       { keys: "Ctrl+S", does: "Save", press: { key: "s", ctrl: true }, action: "save" },
       { keys: "Ctrl+Enter", does: "Run", press: { key: "Enter", ctrl: true }, action: "run" },
+    ] },
+    { title: "Side panes (either view)", rows: [
+      { keys: "[", does: "Hide or show the left side: the parts, or the board's tray", press: { key: "[" }, action: "leftPane" },
+      { keys: "]", does: "Hide or show the right side: the results, or the board's panes", press: { key: "]" }, action: "rightPane" },
     ] },
     { title: "Mouse on the sheet", rows: [
       { keys: "Scroll", does: "Zoom" },

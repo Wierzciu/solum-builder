@@ -1052,16 +1052,21 @@ export function timeText(seconds) {
 }
 
 export const LONGER = "Taking a little longer than expected…";
+/** A run is late past this many times its estimate... */
+const LATE_BY = 1.25;
+/** ...and these seconds more: the estimate is good to about a quarter either way, and a
+ * few seconds' run has fixed costs of its own (D-399). */
+const LATE_PLUS = 5;
 
 /**
  * The time a run has left, in words, from its speed so far: "About 25 seconds left."; once
- * the run has gone past the time it said it would take, `LONGER` instead (P6h5g).
+ * the run is clearly late (past `LATE_BY` × its estimate + `LATE_PLUS`), `LONGER` instead.
  * @param {number} seconds left at the speed so far
  * @param {number} [elapsed] seconds the run has taken so far
  * @param {number} [expected] seconds it said it would take (0: not known)
  */
 export function leftText(seconds, elapsed = 0, expected = 0) {
-  if (expected > 0 && elapsed > expected) return LONGER;
+  if (expected > 0 && elapsed > expected * LATE_BY + LATE_PLUS) return LONGER;
   if (seconds < 5) return "Almost done.";
   if (seconds < 60) return `About ${Math.ceil(seconds / 5) * 5} seconds left.`;
   const minutes = Math.round(seconds / 60);

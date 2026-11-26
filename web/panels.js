@@ -924,12 +924,25 @@ function setLargeView(el, on, hooks = {}) {
       el._largeToggle = true;
     }
   } else {
+    backInColumn(el); // its column shown first, if hidden: Collapse lands where it's seen (D-408)
     largeViews.delete(el);
     el.style.bottom = el.style.left = el.style.right = "";
     el.open = true; // back in its panel open, even from a shrunk bar
   }
   stackLargeViews();
   saveLargeViews();
+}
+
+/** @type {(el: HTMLElement) => void} told when a large view goes back into its column */
+let backInColumn = () => {};
+
+/**
+ * Who to tell when a large view goes back into its column (its Collapse), before it does:
+ * the side panes, which show its column if it's hidden (D-408).
+ * @param {(el: HTMLElement) => void} fn
+ */
+export function onBackInColumn(fn) {
+  backInColumn = fn;
 }
 
 const LARGE_EDGE = 16; // px from the window's bottom

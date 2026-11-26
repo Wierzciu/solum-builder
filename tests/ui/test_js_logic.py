@@ -212,7 +212,9 @@ def test_viewport_math(js: Page) -> None:
         const edge = v.revealPoint(vb, 195, 50);
         const off = v.revealPoint(vb, 1000, -300);
         const grown = v.resizeView(vb, { width: 400, height: 200 }, { width: 800, height: 300 });
-        return { fit, z, p, b, inside, edge, off, grown };
+        // a 100 px pane hidden on the left: the svg's left edge moves 100 px left
+        const held = v.holdView(vb, { left: 200, top: 50, width: 400, height: 200 }, { left: 100, top: 50, width: 500, height: 200 });
+        return { fit, z, p, b, inside, edge, off, grown, held };
         """,
     )
     assert result["fit"] == {"x": 0, "y": -50, "w": 200, "h": 200}  # square area: pad height
@@ -228,6 +230,52 @@ def test_viewport_math(js: Page) -> None:
     assert result["off"] == {"x": 900, "y": -350, "w": 200, "h": 100}
     # resizeView: same 0.5 units per pixel, same middle (100, 50): no re-fit (D-164)
     assert result["grown"] == {"x": -100, "y": -25, "w": 400, "h": 150}
+    # holdView: every point under the same pixel (D-408): 100 px more on the left at 0.5
+    # units per pixel is 50 units more view to the left, nothing moved
+    assert result["held"] == {"x": -50, "y": 0, "w": 250, "h": 100}
+
+
+def test_side_panes_state(js: Page) -> None:
+    """D-408: the hidden sides per view, read from what was kept, turned over one at a
+    time; what the edge tab and the column's top button say; the keys."""
+    result = run(
+        js,
+        """
+        const p = await m('side-panes.js');
+        const k = await m('editor/keys.js');
+        const none = p.readSides(null);
+        const garbled = p.readSides({ board: { left: "yes", right: true }, other: { left: true } });
+        const one = p.withSide(none, "board", "left");
+        const back = p.withSide(one, "board", "left");
+        const shown = p.withSide(one, "schematic", "right", false);
+        return {
+          none, garbled, one, back, shown,
+          titles: [p.sideTitle("Show", "schematic", "left", false), p.sideTitle("Show", "board", "right", false), p.sideTitle("Show", "board", "right", true), p.sideTitle("Show", "schematic", "right", true), p.sideTitle("Hide", "board", "left", false), p.sideTitle("Pin", "schematic", "left", false)],
+          keys: [k.actionFor({ key: "[" }), k.actionFor({ key: "]" }), k.actionFor({ key: "[", alt: true }), k.actionFor({ key: "[", ctrl: true })],
+        };
+        """,
+    )
+    shown = {"left": False, "right": False}
+    assert result["none"] == {"schematic": shown, "board": shown}
+    assert result["garbled"] == {"schematic": shown, "board": {"left": False, "right": True}}
+    assert result["one"] == {"schematic": shown, "board": {"left": True, "right": False}}
+    assert result["back"] == result["none"]
+    assert result["shown"] == result["one"]  # showing a shown side changes nothing
+    assert result["titles"] == [
+        "Show the parts ([)",
+        "Show the board's panes (])",
+        "Show the review (])",
+        "Show the results (])",
+        "Hide the tray ([)",
+        "Pin the parts ([)",
+    ]
+    # [ and ] even typed with Alt (Option+8 on a Portuguese Mac); not with Ctrl
+    assert result["keys"] == [
+        {"action": "leftPane"},
+        {"action": "rightPane"},
+        {"action": "leftPane"},
+        None,
+    ]
 
 
 def test_one_at_a_time_runs_the_newest_call_once(js: Page) -> None:
@@ -1690,7 +1738,8 @@ def test_build_a_full_layout_s_words(js: Page) -> None:
           figures: b.figuresLine({ columns: 21, strips: 14, cuts: 1, links: 13 }),
           of: b.figuresOf({ size: [9, 8], cuts: ['A1', 'B2'], links: [['C1', 'C4']] }),
           left: [3, 22, 130].map(b.leftText),
-          longer: [b.leftText(20, 40, 35), b.leftText(20, 30, 35), b.leftText(20, 40, 0)],
+          // late only past 1.25 × the estimate + 5 s: 35 s said, late after 48.75 s; 4 s said, after 10 s
+          longer: [b.leftText(20, 49, 35), b.leftText(20, 45, 35), b.leftText(20, 40, 0), b.leftText(2, 9, 4), b.leftText(2, 11, 4)],
           same: [b.sameTry([one, two], { stripboard: { ...two.stripboard } }), b.sameTry([one], two)],
         };
         """,
@@ -1710,7 +1759,8 @@ def test_build_a_full_layout_s_words(js: Page) -> None:
     assert got["of"] == {"columns": 9, "strips": 8, "cuts": 2, "links": 1}
     assert got["left"] == ["Almost done.", "About 25 seconds left.", "About 2 minutes left."]
     assert got["longer"] == ["Taking a little longer than expected…",
-                             "About 20 seconds left.", "About 20 seconds left."]  # fmt: skip
+                             "About 20 seconds left.", "About 20 seconds left.",
+                             "Almost done.", "Taking a little longer than expected…"]  # fmt: skip
     assert got["same"] == [1, -1]
 
 

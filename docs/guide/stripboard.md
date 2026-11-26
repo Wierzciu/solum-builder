@@ -16,6 +16,8 @@ The Board view swaps the screen around:
 - **The board** in the middle, at real proportions, seen from the parts side. The line under it gives its size, cuts, links and wires: *20 × 16 holes (51 × 41 mm), 20 cuts, 11 links, 14 wires*.
 - **The board's panes** on the right, in the result panes' place: **Warnings**, **Notes**, **Schematic** (a small copy; selecting a part lights it on both drawings; **Expand** shows it large over the board), **Nets** and **Settings**. They move and fold as the result panes do, and keep their own order. Back in the schematic the result panes return as they were.
 
+The tray and the board's panes hide here as the palette and the result panes do in the schematic (the bars at the window's edges, **[** and **]**): a click on a bar brings its side back, and resting on it peeks the side out. The Board view keeps its own: hide the tray here and the palette stays in the schematic.
+
 Undo, Redo and History follow the view: the board has its own steps, so undoing on the board never undoes a schematic change. Save keeps both.
 
 ## The tray
@@ -152,7 +154,7 @@ While it runs, a window shows its progress and the best board so far (*Best so f
 
 ### Looking before you keep it
 
-When it's done, **Review the layout** opens at the top of the right-hand column and compares the two: *Before 34 × 13 holes, 14 cuts, 15 links → After 15 × 7 holes, 11 cuts, 6 links*. Until you keep a board, the canvas has a yellow outline and the board can't be edited: the tray, the panes, Cuts and Links are faded. **Flip** and **Hide parts** still work, on both boards in Both, and so does T for See-through.
+When it's done, **Review the layout** opens at the top of the right-hand column and compares the two: *Before 34 × 13 holes, 14 cuts, 15 links → After 15 × 7 holes, 11 cuts, 6 links*. Until you keep a board, the canvas has a yellow outline and the board can't be edited: the tray, the panes, Cuts and Links are faded. **Flip** and **Hide parts** still work, on both boards in Both, and so does T for See-through. If you'd hidden the right-hand column, it comes back as the review opens; you can hide it again (**]**) to look at the board, and its bar, *Show the review*, brings it back.
 
 ![Review the layout in Both: the board before above, the new one below](img/board-review.png)
 
@@ -164,7 +166,7 @@ The layout is the app's: check it, and adjust it if you need to, before you buil
 
 ## Board settings
 
-The Settings pane's buttons turn each setting on (outlined) or off. They're remembered for you on this computer, for every circuit.
+The Settings pane's buttons turn each setting on (shaded, with an edge in the highlight colour) or off. They're remembered for you on this computer, for every circuit.
 
 Under **Show**:
 - **Values**: label each part with its value as well as its ref.
@@ -176,7 +178,7 @@ Under **While editing**:
 - **Auto-grow**: the board grows to take in what's placed past its edge.
 - **Allow shorts**: a move that makes a short is allowed, and the short is shown red. Off, it's refused.
 
-**Clear board**, at the bottom, asks first. **Suggest next**, in the tray's heading, turns the suggestion at the top of the tray on or off. **Hide parts** and **Flip** are on the board's own bar, outlined while they're on.
+**Clear board**, at the bottom, asks first. **Suggest next**, in the tray's heading, turns the suggestion at the top of the tray on or off. **Hide parts** and **Flip** are on the board's own bar, shaded while they're on.
 
 A trimmer goes on as the square single-turn kind (triangle, Bourns 3362P) unless its form's **Board trimmer** says in line (Bourns 3296W); a placed one's right-click menu changes it too. A surface-mount transistor goes on the board on a TO-92 adapter, set by its form's **Mounting**.
 

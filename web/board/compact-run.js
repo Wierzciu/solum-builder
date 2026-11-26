@@ -23,11 +23,13 @@ import { figuresLine, figuresOf, leftText, sameTry, standUpOf } from "./board-lo
  *   lock: (on: boolean) => void,
  *   keep: (stripboard: any) => void,
  *   refuse: (message: string) => void,
+ *   reviewing?: (open: boolean) => void,
  * }} RunApp
  *   `preview`: draw these boards in place of the circuit's (one, or Before above After),
  *   dimmed while running; null: the circuit's own again; `lock`: the board's editing off
  *   (tools, tray, panes, keys) or on; `keep`: the board kept, one undo step ("Build a full
- *   layout")
+ *   layout"); `reviewing`: the review bar has just opened (true) or been put away (false)
+ *   (a hidden right column shown once, D-408)
  */
 
 const SAME = "this circuit doesn't leave room for a different layout this small.";
@@ -233,8 +235,10 @@ export function compactRun(host, app, column) {
     keepOld.textContent = old && old === base ? "Keep the base board" : "Keep the old board";
     said.textContent = notes[shown];
     said.hidden = !notes[shown];
-    if (reviewBar.hidden) column.scrollTop = 0; // opening: the review in sight
+    const opening = reviewBar.hidden;
+    if (opening) column.scrollTop = 0; // opening: the review in sight
     reviewBar.hidden = false;
+    if (opening) app.reviewing?.(true);
     const showing = view === "before" && old ? [{ stripboard: old.stripboard }]
       : view === "both" && old ? [{ stripboard: old.stripboard, title: `Before: ${figuresLine(old)}` }, { stripboard: after.stripboard, title: `After, try ${n}: ${figuresLine(after)}` }]
         : [{ stripboard: after.stripboard }];
@@ -246,7 +250,9 @@ export function compactRun(host, app, column) {
     running?.abort();
     running = null;
     open = false;
+    const reviewed = !reviewBar.hidden;
     runWindow.hidden = reviewBar.hidden = dimNote.hidden = true;
+    if (reviewed) app.reviewing?.(false);
     app.preview(null, false);
     app.lock(false);
   }

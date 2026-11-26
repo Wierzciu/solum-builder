@@ -9,7 +9,7 @@
  * the board and footprints from the view.
  */
 
-import { fitView, panBy, viewBoxText, zoomAt, resizeView } from "../schematic/viewport.js";
+import { fitView, holdView, panBy, viewBoxText, zoomAt, resizeView } from "../schematic/viewport.js";
 import { STEP, columnName, holeName, holeXY, itemRefs, itemShape, labelAt, legLabel, partShapes, pointAlong, routePath, runRects, shownHoles, valueOf, wireHops, wireObstacles, wireRoutes } from "./board-logic.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -310,6 +310,7 @@ export function boardCanvas(svg, app) {
       const route = routes[i] ?? [[line.x1, line.y1], [line.x2, line.y2]];
       const g = el("g", { class: ["off-wire", line.loose ? "loose" : "", pad ? "pad" : "", byHand(i) ? "by-hand" : ""].filter(Boolean).join(" "), "data-wire": index }, wires);
       el("path", { d: routePath(route, hops[i]), class: "wire" }, g);
+      el("path", { d: routePath(route, hops[i]), class: "wire-hit" }, g); // the whole wire lights on hover; a press looks through it (spotAt)
       for (let run = 1; run < route.length - 2; run++) { // its middle runs, each moved by dragging (D-380)
         const [[ax, ay], [bx, by]] = [route[run], route[run + 1]];
         el("line", { x1: ax, y1: ay, x2: bx, y2: by, class: `wire-run ${ay === by ? "level" : "upright"}`, "data-end": "run", "data-run": run }, g);
@@ -478,12 +479,22 @@ export function boardCanvas(svg, app) {
   }, { passive: false });
 
   /**
-   * What's under a point in the window: `target` the element there (an event's, else the
-   * topmost at the point, the ghost aside).
+   * The element under a point in the window: `target` (an event's), else the topmost at the
+   * point; the ghost aside, and a wire's hover line looked through, so a press reaches what's
+   * under it (a hole, a part, a ruler's mark) as before the line was there.
+   * @param {number} clientX @param {number} clientY @param {Element | null} [target] @returns {Element}
+   */
+  const elementAt = (clientX, clientY, target = null) => {
+    if (target && !target.classList.contains("wire-hit")) return target;
+    return document.elementsFromPoint(clientX, clientY).find((n) => svg.contains(n) && !n.closest(".ghost") && !n.classList.contains("wire-hit")) ?? svg;
+  };
+
+  /**
+   * What's under a point in the window (`elementAt`).
    * @param {number} clientX @param {number} clientY @param {Element | null} [target] @returns {Spot}
    */
   const spotAt = (clientX, clientY, target = null) => {
-    const at = target ?? document.elementsFromPoint(clientX, clientY).find((n) => svg.contains(n) && !n.closest(".ghost")) ?? svg;
+    const at = elementAt(clientX, clientY, target);
     const link = at.closest(".board-link");
     const ends = link ? ["data-a", "data-b"].map((k) => /** @type {Hole} */ (String(link.getAttribute(k)).split(",").map(Number))) : null;
     const wire = at.closest(".off-wire");
@@ -509,8 +520,7 @@ export function boardCanvas(svg, app) {
     if (e.button !== 0) return;
     const start = { x: e.clientX, y: e.clientY, vb };
     let moved = false;
-    const target = /** @type {Element} */ (e.target);
-    const ruler = target.closest(".ruler");
+    const ruler = elementAt(e.clientX, e.clientY, /** @type {Element} */ (e.target)).closest(".ruler");
     const spot = spotOf(e);
     const taken = !ruler && app.onPress(spot);
     pressing = true;
@@ -570,6 +580,19 @@ export function boardCanvas(svg, app) {
     /** @param {number} factor */
     zoomBy(factor) {
       vb = zoomAt(vb, vb.x + vb.w / 2, vb.y + vb.h / 2, factor);
+      apply();
+    },
+    /**
+     * Run `change` (a side pane hidden or shown) with the drawing kept where it is on
+     * screen (`holdView`, D-408), not re-centred as a window resize keeps it.
+     * @param {() => void} change
+     */
+    keepPlace(change) {
+      const from = svg.getBoundingClientRect();
+      change();
+      const to = svg.getBoundingClientRect();
+      if (!shown || !from.width || !to.width) return;
+      vb = holdView(vb, from, to);
       apply();
     },
   };

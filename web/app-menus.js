@@ -60,6 +60,8 @@ import { addModelSheet, converterSheet, partsSheet, calculatorsSheet, resistorSh
  * @property {(net: string) => void} pinFrequency the Frequency pane's pin on this net (D-366)
  * @property {() => boolean} boardShown whether the Board view is showing
  * @property {() => void} toggleBoard Tools → Stripboard layout: the Board button's click (D-370)
+ * @property {(side: "left" | "right") => boolean} sideHidden whether a side pane of the view shown is hidden (D-408)
+ * @property {(side: "left" | "right") => void} toggleSide hide or show a side pane of the view shown
  */
 
 /**
@@ -141,6 +143,8 @@ export function appMenus(host, schematic, app) {
       { label: "Capacitor types", id: "menu-cap-types", checked: app.shown().capTypes, hint: "100n film", run: app.toggleCapTypes },
       { label: "Problem marks", id: "menu-marks", checked: app.shown().marks, hint: "each problem on the sheet and the board", run: app.toggleMarks },
       "-",
+      { label: app.sideHidden("left") ? "Show left pane" : "Hide left pane", id: "menu-side-left", hint: "[", run: () => app.toggleSide("left") },
+      { label: app.sideHidden("right") ? "Show right pane" : "Hide right pane", id: "menu-side-right", hint: "]", run: () => app.toggleSide("right") },
       { label: "Reset pane order", id: "menu-reset-panes", hint: "every pane open, in the column", run: app.resetPanes },
     ];
   }

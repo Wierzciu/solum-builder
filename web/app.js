@@ -35,6 +35,7 @@ import { db, volts } from "./fixed.js";
 import { closeMenus } from "./menus.js";
 import { reorderable } from "./panes.js";
 import { boardView } from "./board/board-view.js";
+import { sidePanes } from "./side-panes.js";
 import { refusalBar } from "./refusal.js";
 import { liveCurves, liveValues, nearestStep, readingRows } from "./live.js";
 import { h, knobControl, refreshPins, paneInfo, restoreLargeViews, shrinkLargeViews, renderDc, renderKnobs, renderNodeView, renderPartView, renderProbeFailed, renderProblems, renderReadings, renderSweepSummary, showKnob } from "./panels.js";
@@ -354,7 +355,11 @@ const board = boardView($("canvas-body"), {
   selection: () => state.selection,
   select: (selection) => select(selection),
   resting: () => outputSelection(),
-  shown: () => updateButtons(),
+  shown: () => {
+    sides.refresh(); // the view's own sides hidden or shown (D-408)
+    updateButtons();
+  },
+  reviewing: (open) => sides.reviewing(open),
   editBoard: (stripboard, label) => editBoard(stripboard, label),
   editPart: async (ref, patch, stripboard, label) => {
     const message = await tryEdit(withBoard(updatePart(state.circuit, ref, patch), stripboard), label, "", boardStack);
@@ -362,6 +367,15 @@ const board = boardView($("canvas-body"), {
   },
   refuse: (message) => refusal.show(message),
   marks: () => state.marks,
+});
+// the side panes that hide, per view (D-408)
+const sides = sidePanes(/** @type {HTMLElement} */ (document.querySelector(".workspace")), {
+  columns: {
+    schematic: { left: $("palette"), right: /** @type {HTMLElement} */ (document.querySelector(".panels")) },
+    board: { left: $("board-tray"), right: $("board-panels") },
+  },
+  view: () => (board.active() ? "board" : "schematic"),
+  keepPlace: (change) => (board.active() ? board : schematic).keepPlace(change),
 });
 const menus = appMenus($("canvas-body"), schematic, {
   pinFrequency: (net) => tools.view.pin(net),
@@ -405,6 +419,8 @@ const menus = appMenus($("canvas-body"), schematic, {
   toggleMarks: () => toggleMarks(),
   resetPanes: () => resetPanes(),
   openSettings: () => openSettings(),
+  sideHidden: (side) => sides.hidden(side),
+  toggleSide: (side) => sides.toggle(side),
 });
 const tiles = palette($("palette"), schematic, {
   circuit: () => state.circuit,
@@ -1910,7 +1926,7 @@ function toggleDc() {
 }
 
 /** The keys that work in the Board view: the rest edit the schematic. */
-const BOARD_KEYS = new Set(["undo", "redo", "save", "run", "cancel"]);
+const BOARD_KEYS = new Set(["undo", "redo", "save", "run", "cancel", "leftPane", "rightPane"]);
 
 /** @param {KeyboardEvent} e */
 function onKey(e) {
@@ -1951,6 +1967,8 @@ function onKey(e) {
     case "selectAll": return selectItems(allItems(state.circuit));
     case "find": return findPart();
     case "insertBlock": return insertBlock();
+    case "leftPane": return sides.toggle("left");
+    case "rightPane": return sides.toggle("right");
     case "cancel":
       if (schematic.cancelWire()) return;
       closeForm();

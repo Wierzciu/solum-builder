@@ -27,7 +27,10 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--accent); color: var(--accent-hi); }
-button[aria-checked="true"], button.active { background: var(--accent); border-color: var(--accent); color: var(--text); }
+/* one "on" look for every toggle, tab and chosen option (D-407): ocean with a brass edge;
+   solid brass is only ever "go" (button.primary); hovering an "on" button keeps it on */
+button[aria-checked="true"], button[aria-pressed="true"], button.active,
+button[aria-checked="true"]:hover, button[aria-pressed="true"]:hover, button.active:hover { background: var(--info-bg); border-color: var(--accent); color: var(--text); }
 
 select {
   background: var(--surface-1);
@@ -79,7 +82,7 @@ header .sep { width: 1px; align-self: stretch; margin: 2px 0; background: var(--
 .board-button { position: relative; background: transparent; border-color: transparent; color: var(--text-2); }
 .board-button:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }
 .board-button.marked::after { content: ""; position: absolute; top: 4px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.board-button[aria-pressed="true"] { border-color: var(--border); background: var(--info-bg); color: var(--text); }
+.board-button[aria-pressed="true"], .board-button[aria-pressed="true"]:hover { border-color: var(--accent); background: var(--info-bg); color: var(--text); }
 .power { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
 /* who powers the pedal when the drawing has a battery or a DC jack (D-145) */
 .power-chip { color: var(--text-2); font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; white-space: nowrap; flex: none; } /* as the Not saved chip */
@@ -133,7 +136,6 @@ a.button:hover { border-color: var(--accent); color: var(--accent-hi); }
 a.button[hidden] { display: none; }
 button:disabled { opacity: 0.45; cursor: default; border-color: var(--border); color: var(--text-3); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--text); }
-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text); }
 .dirty { color: var(--warning); font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--warning); border-radius: 3px; padding: 0 5px; white-space: nowrap; flex: none; }
 .dirty[hidden] { display: none; }
 .badges { display: inline-flex; gap: 6px; flex: none; }
@@ -154,13 +156,18 @@ kbd {
 
 /* Palette (left): tiles with the part's symbol, dragged onto the canvas */
 .palette {
-  width: 184px;
+  --side-w: 184px;
+  width: var(--side-w);
   flex: none;
   overflow-y: auto;
   background: var(--surface-1);
   border-right: 1px solid var(--border);
   padding: 6px 8px 16px;
 }
+/* each group folds under its heading, the browser's own marker as the panes' (palette.js) */
+.palette-group > summary { cursor: pointer; color: var(--text-3); font-size: 10px; margin: 10px 2px 6px; }
+.palette-group > summary:hover, .palette-group > summary:hover h2 { color: var(--text-2); }
+.palette-group > summary h2 { display: inline; margin: 0 0 0 2px; }
 .palette h2 {
   font-family: var(--font-display);
   font-weight: 300;
@@ -260,8 +267,47 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 
 
 /* Workspace: canvas gets the space, panels on the right */
-.workspace { flex: 1; display: flex; min-height: 0; }
+.workspace { flex: 1; display: flex; min-height: 0; overflow: hidden; } /* a hidden side slides out past its edge (D-408) */
 .canvas { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* side panes that hide (D-408): out past the workspace's edge, as laid out (its scroll and
+   wrapping kept), not focusable; a pane expanded as a large view stays on screen. They
+   slide by `left` when hidden or shown (a transform would carry a large view, position:
+   fixed, with it): out over their own place before the canvas takes the width, in after
+   it gives it back. A peek slides by a transform instead (side-panes.js): WebKit, the Mac
+   app's, left a column moved by `left` drawn and hit-tested partly where it was, and a
+   peeking column's own large view is tucked away, so there's nothing to carry */
+.side-pane { position: relative; left: 0; transition: left 0.18s ease-out, transform 0.18s ease-in, visibility 0s; }
+.side-pane.side-left { --slide: calc(-1 * var(--side-w)); }
+.side-pane.side-right { --slide: var(--side-w); }
+.side-pane.side-left.side-hidden { margin-left: calc(-1 * var(--side-w)); }
+.side-pane.side-right.side-hidden { margin-right: calc(-1 * var(--side-w)); }
+.side-pane.side-hidden { visibility: hidden; transition: left 0.18s ease-in, transform 0.18s ease-in, visibility 0s 0.18s; }
+.side-pane.side-out { left: var(--slide); }
+.side-pane.side-hidden.side-peek { transform: translateX(calc(-1 * var(--slide))); visibility: visible; z-index: 35; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); transition: transform 0.18s ease-out, visibility 0s; }
+.side-pane.no-slide { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .side-pane { transition: none !important; } }
+/* back once the peek has slid away, not carried by it */
+.side-hidden > .large-view { visibility: visible; transition: visibility 0s 0.18s; }
+/* a peek covers everything, on both sides: a peeking column's own pane out as a large view
+   (which would sit above it, being its child) is tucked away until it slides back */
+.side-pane.side-peek > .large-view { visibility: hidden; transition: none; }
+/* the side columns' scroll bars: thin, and shown only while the pointer is over the column
+   or something in it has focus, so the palette's doesn't stand between the tiles and the
+   canvas (the standard properties; WebKit, the Mac app's, reads the -webkit- ones) */
+.side-pane { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.side-pane:hover, .side-pane:focus-within { scrollbar-color: var(--text-3) transparent; }
+.side-pane::-webkit-scrollbar { width: 6px; }
+.side-pane::-webkit-scrollbar-track { background: transparent; }
+.side-pane::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.side-pane:hover::-webkit-scrollbar-thumb, .side-pane:focus-within::-webkit-scrollbar-thumb { background: var(--text-3); }
+/* each side's bar, at the window's edge beyond its column, always there: a click hides or
+   shows the column; resting on it while hidden peeks the column out (side-panes.js) */
+.side-bar { flex: none; position: relative; z-index: 36; /* over a peeking column (35): it never takes the bar's pointer; large views are inset from the edge */ width: 10px; padding: 0; border: 0; border-radius: 0; background: var(--surface-1); color: var(--text-2); font-size: 15px; line-height: 1; }
+.side-bar.left { border-right: 1px solid var(--border); }
+.side-bar.right { border-left: 1px solid var(--border); }
+.side-bar:hover { background: var(--surface-2); color: var(--accent-hi); }
+.side-bar.left:hover { border-right-color: var(--accent); }
+.side-bar.right:hover { border-left-color: var(--accent); }
 .circuit-name {
   margin: 0;
   white-space: nowrap;
@@ -321,14 +367,13 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 .board-needs .reach-joined .state { color: var(--ok); }
 body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-show="board"] .panels { display: none; }
 /* the Tray: the palette's place in the Board view (D-371) */
-.board-tray { width: 232px; flex: none; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--border); padding: 6px 10px 16px; font-size: 13px; }
+.board-tray { --side-w: 232px; width: var(--side-w); flex: none; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--border); padding: 6px 10px 16px; font-size: 13px; }
 .board-tray[hidden] { display: none; }
 .board-edit { display: flex; gap: 6px; margin: 6px 0 4px; } /* Cuts and Links (D-406) */
 .board-edit[hidden] { display: none; }
 .board-edit button { flex: 1; }
-/* a toggle (D-406): Cuts, Links, Suggest next and the settings; on is outlined, not filled */
+/* a toggle (D-406): Cuts, Links, Suggest next and the settings; on is the one "on" look (D-407) */
 .board-toggle { padding: 4px 8px; font: 12px var(--font-ui); background: var(--surface-2); color: var(--text-2); }
-.board-toggle[aria-pressed="true"] { background: var(--surface-2); color: var(--text); border-color: var(--accent-hi); box-shadow: inset 0 0 0 1px var(--accent-hi); }
 .tray-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .tray-head .board-toggle { padding: 2px 7px; font-size: 11px; }
 .tray-head .board-toggle[hidden] { display: none; }
@@ -409,6 +454,7 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 .board-drawing .off-wire .wire { fill: none; stroke: var(--brass); stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .board-drawing .off-wire.loose .wire { stroke-dasharray: 3 2; }
 .board-drawing .off-wire path { pointer-events: none; }
+.board-drawing .off-wire path.wire-hit { fill: none; stroke: transparent; stroke-width: 6; vector-effect: non-scaling-stroke; pointer-events: stroke; } /* the whole wire lights on hover (canvas.js) */
 .board-drawing .off-wire .wire-run { stroke: transparent; stroke-width: 6; vector-effect: non-scaling-stroke; pointer-events: stroke; }
 .board-drawing .off-wire .wire-run.level { cursor: ns-resize; }
 .board-drawing .off-wire .wire-run.upright { cursor: ew-resize; }
@@ -448,7 +494,7 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 .board-drawing .copper .board-parts .body, .board-drawing .copper .board-parts .lead, .board-drawing .copper .board-parts .band,
 .board-drawing .copper .board-parts .stripe, .board-drawing .copper .board-parts .notch, .board-drawing .copper .board-parts .dot,
 .board-drawing .copper .board-labels, .board-drawing .copper .leg-name, .board-drawing .copper .off-items,
-.board-drawing .copper .off-wire .wire, .board-drawing .copper .wire-run, .board-drawing .copper .lug-end, .board-drawing .copper .off-wire:not(.pad), .board-drawing .copper .guide { display: none; }
+.board-drawing .copper .off-wire .wire, .board-drawing .copper .wire-hit, .board-drawing .copper .wire-run, .board-drawing .copper .lug-end, .board-drawing .copper .off-wire:not(.pad), .board-drawing .copper .guide { display: none; }
 .board-drawing .copper .strip { fill: color-mix(in srgb, var(--picked) 30%, transparent); }
 .board-drawing .copper .leg, .board-drawing .copper .far-end { fill: var(--silver); }
 /* editing (D-374): the tools, a part carried, a link being laid, shorted copper */
@@ -551,7 +597,6 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 .compact-row + .compact-row { margin-top: 6px; }
 .compact-figures { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
 .compact-modes, .compact-tries { display: inline-flex; gap: 2px; align-items: center; }
-.compact-modes button[aria-pressed="true"] { background: var(--info-bg); color: var(--text); border-color: var(--accent); }
 .compact-try { padding: 0 6px; font-variant-numeric: tabular-nums; }
 .compact-said { margin: 6px 0 0; color: var(--text-3); }
 .canvas-body.split { flex-direction: column; }
@@ -660,7 +705,8 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 
 /* Panels */
 .panels, .board-panels {
-  width: 440px;
+  --side-w: 440px;
+  width: var(--side-w);
   flex: none;
   overflow-y: auto;
   overscroll-behavior: contain; /* the column stops a scroll, not the page (D-343) */
@@ -1260,7 +1306,6 @@ body[data-frequency-editing="true"] #schematic { outline: 2px solid var(--accent
 .fix-box { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--accent); border-radius: 3px; }
 .fix-option { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 .fix-option button { flex: none; padding: 1px 8px; font-size: 11px; }
-.fix-option button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-hi); }
 .fix-parts-head { color: var(--text-3); font-size: 11px; }
 .fix-parts { display: flex; flex-direction: column; gap: 10px; font-size: 11px; color: var(--text-2); }
 /* the gain box's sliders (D-125): a part's values placed by the gain each gives, marks where something starts clipping */
