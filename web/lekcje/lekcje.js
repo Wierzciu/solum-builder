@@ -284,8 +284,6 @@ function updateCompletionHint() {
 
 /** @param {string} id */
 async function loadLesson(id) {
-  const loading = $("loading");
-  loading?.removeAttribute("hidden");
   const main = $("lesson");
   main.replaceChildren(el("Wczytuję lekcję…", "div", { class: "loading" }));
   const spinner = el("", "span", { class: "spinner", "aria-hidden": "true" });
@@ -378,7 +376,7 @@ function renderLesson(lesson) {
   if (next) nav.append(el(`${next.title} →`, "a", { href: lessonHref(next), class: "next" }));
   main.append(nav);
   updateCompletionHint();
-  window.scrollTo({ top: 0, behavior: "instant" });
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function currentId() {
@@ -428,7 +426,7 @@ window.addEventListener("storage", (event) => {
   if (state.lesson) {
     const scroll = window.scrollY;
     renderLesson(state.lesson);
-    window.scrollTo({ top: scroll, behavior: "instant" });
+    window.scrollTo({ top: scroll, behavior: "auto" });
   }
 });
 

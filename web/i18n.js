@@ -22,6 +22,7 @@ const PL = new Map(Object.entries({
   "Help": "Pomoc",
   "Board": "Płytka",
   "Not saved": "Niezapisane",
+  "Untitled": "Bez nazwy",
   "Power": "Zasilanie",
   "▶ Run": "▶ Uruchom",
   "Run": "Uruchom",
@@ -277,6 +278,16 @@ const PL = new Map(Object.entries({
   "Compare supply voltages, overlaid on the plots (up to 5)":
     "Porównaj napięcia zasilania na wykresach (do 5)",
   "Try": "Wypróbuj",
+  "Export": "Eksport",
+  "Checking the last save…": "Sprawdzam ostatni zapis…",
+  "Save the circuit first: exports are made from the last save, so the package matches the file.":
+    "Najpierw zapisz obwód: eksport powstaje z ostatniego zapisu, żeby paczka zgadzała się z plikiem.",
+  "Blocks aren't exported on their own: place this one in a circuit and export that.":
+    "Bloków nie eksportuje się osobno: wstaw blok do obwodu i wyeksportuj obwód.",
+  "Schematic (SVG)": "Schemat (SVG)",
+  "Schematic (PDF)": "Schemat (PDF)",
+  "Stripboard (PDF)": "Płytka paskowa (PDF)",
+  "Build package (zip)": "Paczka budowy (zip)",
   "My circuits": "Moje obwody",
   "Import": "Importuj",
   "a Solum Builder file (.json), not a netlist": "plik Solum Builder (.json), nie netlista",
