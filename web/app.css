@@ -27,7 +27,10 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--accent); color: var(--accent-hi); }
-button[aria-checked="true"], button.active { background: var(--accent); border-color: var(--accent); color: var(--text); }
+/* one "on" look for every toggle, tab and chosen option (D-407): ocean with a brass edge;
+   solid brass is only ever "go" (button.primary); hovering an "on" button keeps it on */
+button[aria-checked="true"], button[aria-pressed="true"], button.active,
+button[aria-checked="true"]:hover, button[aria-pressed="true"]:hover, button.active:hover { background: var(--info-bg); border-color: var(--accent); color: var(--text); }
 
 select {
   background: var(--surface-1);
@@ -79,7 +82,7 @@ header .sep { width: 1px; align-self: stretch; margin: 2px 0; background: var(--
 .board-button { position: relative; background: transparent; border-color: transparent; color: var(--text-2); }
 .board-button:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }
 .board-button.marked::after { content: ""; position: absolute; top: 4px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.board-button[aria-pressed="true"] { border-color: var(--border); background: var(--info-bg); color: var(--text); }
+.board-button[aria-pressed="true"], .board-button[aria-pressed="true"]:hover { border-color: var(--accent); background: var(--info-bg); color: var(--text); }
 .power { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
 /* who powers the pedal when the drawing has a battery or a DC jack (D-145) */
 .power-chip { color: var(--text-2); font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; white-space: nowrap; flex: none; } /* as the Not saved chip */
@@ -133,7 +136,6 @@ a.button:hover { border-color: var(--accent); color: var(--accent-hi); }
 a.button[hidden] { display: none; }
 button:disabled { opacity: 0.45; cursor: default; border-color: var(--border); color: var(--text-3); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--text); }
-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text); }
 .dirty { color: var(--warning); font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--warning); border-radius: 3px; padding: 0 5px; white-space: nowrap; flex: none; }
 .dirty[hidden] { display: none; }
 .badges { display: inline-flex; gap: 6px; flex: none; }
@@ -326,9 +328,8 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 .board-edit { display: flex; gap: 6px; margin: 6px 0 4px; } /* Cuts and Links (D-406) */
 .board-edit[hidden] { display: none; }
 .board-edit button { flex: 1; }
-/* a toggle (D-406): Cuts, Links, Suggest next and the settings; on is outlined, not filled */
+/* a toggle (D-406): Cuts, Links, Suggest next and the settings; on is the one "on" look (D-407) */
 .board-toggle { padding: 4px 8px; font: 12px var(--font-ui); background: var(--surface-2); color: var(--text-2); }
-.board-toggle[aria-pressed="true"] { background: var(--surface-2); color: var(--text); border-color: var(--accent-hi); box-shadow: inset 0 0 0 1px var(--accent-hi); }
 .tray-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .tray-head .board-toggle { padding: 2px 7px; font-size: 11px; }
 .tray-head .board-toggle[hidden] { display: none; }
@@ -551,7 +552,6 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 .compact-row + .compact-row { margin-top: 6px; }
 .compact-figures { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
 .compact-modes, .compact-tries { display: inline-flex; gap: 2px; align-items: center; }
-.compact-modes button[aria-pressed="true"] { background: var(--info-bg); color: var(--text); border-color: var(--accent); }
 .compact-try { padding: 0 6px; font-variant-numeric: tabular-nums; }
 .compact-said { margin: 6px 0 0; color: var(--text-3); }
 .canvas-body.split { flex-direction: column; }
@@ -1260,7 +1260,6 @@ body[data-frequency-editing="true"] #schematic { outline: 2px solid var(--accent
 .fix-box { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--accent); border-radius: 3px; }
 .fix-option { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 .fix-option button { flex: none; padding: 1px 8px; font-size: 11px; }
-.fix-option button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-hi); }
 .fix-parts-head { color: var(--text-3); font-size: 11px; }
 .fix-parts { display: flex; flex-direction: column; gap: 10px; font-size: 11px; color: var(--text-2); }
 /* the gain box's sliders (D-125): a part's values placed by the gain each gives, marks where something starts clipping */
