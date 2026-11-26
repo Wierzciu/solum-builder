@@ -369,8 +369,7 @@ const board = boardView($("canvas-body"), {
   marks: () => state.marks,
 });
 // the side panes that hide, per view (D-408)
-const sides = sidePanes(/** @type {HTMLElement} */ (document.querySelector("section.canvas")), {
-  toolbar: /** @type {HTMLElement} */ (document.querySelector("header")), // the toggles at its end
+const sides = sidePanes(/** @type {HTMLElement} */ (document.querySelector(".workspace")), {
   columns: {
     schematic: { left: $("palette"), right: /** @type {HTMLElement} */ (document.querySelector(".panels")) },
     board: { left: $("board-tray"), right: $("board-panels") },

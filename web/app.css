@@ -264,7 +264,7 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 
 /* Workspace: canvas gets the space, panels on the right */
 .workspace { flex: 1; display: flex; min-height: 0; overflow: hidden; } /* a hidden side slides out past its edge (D-408) */
-.canvas { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.canvas { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 /* side panes that hide (D-408): out past the workspace's edge, as laid out (its scroll and
    wrapping kept), not focusable; a pane expanded as a large view stays on screen. They
    slide by `left` (a transform would carry a large view, position: fixed, with it): out
@@ -281,24 +281,17 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 .side-pane.no-slide { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .side-pane { transition: none !important; } }
 .side-hidden > .large-view { visibility: visible; }
-/* the header's toggles, one per side: "on" (D-407) while that side is hidden, open being the
-   default; the icon's strip filled while shown, empty while hidden */
-.side-toggles { display: inline-flex; gap: 4px; }
-.side-toggle { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 26px; padding: 0; }
-.side-toggle svg { width: 16px; height: 12px; }
-.side-toggle .frame { fill: none; stroke: currentColor; }
-.side-toggle .strip { fill: currentColor; }
-.side-toggle[aria-pressed="true"] .strip { fill: none; }
-/* the tab on the canvas's edge where a hidden side was: a click brings it back */
-.side-tab { position: absolute; top: 50%; z-index: 6; transform: translateY(-50%); width: 20px; height: 96px; padding: 0; background: var(--surface-1); border: 1px solid var(--accent); color: var(--accent-hi); font-size: 16px; line-height: 1; }
-.side-tab.left { left: 0; border-left: 0; border-radius: 0 4px 4px 0; }
-.side-tab.right { right: 0; border-right: 0; border-radius: 4px 0 0 4px; }
-.side-tab:hover { background: var(--info-bg); color: var(--text); }
-.side-tab[hidden] { display: none; }
-/* the canvas's very edge where a hidden side was: resting the pointer there peeks it out */
-.side-edge { position: absolute; top: 0; bottom: 0; z-index: 5; width: 8px; }
-.side-edge.left { left: 0; }
-.side-edge.right { right: 0; }
+/* a peek covers everything, on both sides: a peeking column's own pane out as a large view
+   (which would sit above it, being its child) is tucked away until it slides back */
+.side-pane.side-peek > .large-view { visibility: hidden; }
+/* each side's bar, at the window's edge beyond its column, always there: a click hides or
+   shows the column; resting on it while hidden peeks the column out (side-panes.js) */
+.side-bar { flex: none; position: relative; z-index: 9; width: 10px; padding: 0; border: 0; border-radius: 0; background: var(--surface-1); color: var(--text-2); font-size: 15px; line-height: 1; }
+.side-bar.left { border-right: 1px solid var(--border); }
+.side-bar.right { border-left: 1px solid var(--border); }
+.side-bar:hover { background: var(--surface-2); color: var(--accent-hi); }
+.side-bar.left:hover { border-right-color: var(--accent); }
+.side-bar.right:hover { border-left-color: var(--accent); }
 .circuit-name {
   margin: 0;
   white-space: nowrap;

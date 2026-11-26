@@ -1,7 +1,7 @@
 """P7b (D-408): side panes that hide, in the Schematic and the Board view. Either side
-hides and comes back (its key, View's items, its toggle in the header, "on" while hidden;
-the tab on the canvas's edge; resting on the canvas's edge peeks it out over the drawing,
-and its toggle pins it), the drawing staying where it was on screen; remembered after a
+hides and comes back (its key, View's items, its bar at the window's edge; resting on a
+hidden side's bar peeks it out over the drawing, its own large view tucked away, and a click
+pins it), the drawing staying where it was on screen; remembered after a
 reload, per view; an expanded pane stays out when its column hides, and its Collapse shows
 the column; a review opening shows the board's hidden right column, which can be hidden
 again."""
@@ -38,13 +38,13 @@ def test_the_schematic_sides_hide_and_come_back(page: Page, base_url: str) -> No
     width = canvas_width(page)
     page.keyboard.press("]")
     expect(results).to_have_class(HIDDEN)
-    expect(results).not_to_be_in_viewport()
+    expect(results).to_be_hidden()
     assert canvas_width(page) == pytest.approx(width + 440, abs=1)
     assert to_screen(page, *part_pos(page, "Q1")) == pytest.approx(where, abs=0.5)
-    tab = page.locator(".side-tab.right")
-    expect(tab).to_be_visible()
-    expect(tab).to_have_attribute("title", "Show the results (])")
-    expect(page.locator(".side-tab.left")).to_be_hidden()
+    bar = page.locator(".side-bar.right")
+    expect(bar).to_be_visible()
+    expect(bar).to_have_attribute("title", "Show the results (])")
+    expect(page.locator(".side-bar.left")).to_have_attribute("title", "Hide the parts ([)")
 
     # the left side too, from View's menu: the drawing still in place
     menu(page, "view-menu", "menu-side-left")
@@ -61,11 +61,11 @@ def test_the_schematic_sides_hide_and_come_back(page: Page, base_url: str) -> No
     expect(page.locator("#palette")).to_have_class(HIDDEN)
 
     # the edge tabs bring them back, pinned in place
-    page.locator(".side-tab.left").click()
-    page.locator(".side-tab.right").click()
+    page.locator(".side-bar.left").click()
+    page.locator(".side-bar.right").click()
     expect(results).not_to_have_class(HIDDEN)
     expect(results).to_be_in_viewport()
-    expect(page.locator(".side-tab.right")).to_be_hidden()
+    expect(page.locator(".side-bar.right")).to_have_attribute("aria-expanded", "true")
     assert canvas_width(page) == pytest.approx(width, abs=1)
 
 
@@ -77,14 +77,14 @@ def test_the_board_view_keeps_its_own_sides(page: Page, base_url: str) -> None:
     page.keyboard.press("[")
     expect(page.locator("#board-tray")).to_have_class(HIDDEN)
     assert board_x(page, "R1") == pytest.approx(x, abs=0.5)  # the board didn't move
-    expect(page.locator(".side-tab.left")).to_have_attribute("title", "Show the tray ([)")
+    expect(page.locator(".side-bar.left")).to_have_attribute("title", "Show the tray ([)")
     # the Schematic view's palette is its own: still shown there
     page.locator("#board-button").click()
     expect(page.locator("#palette")).not_to_have_class(HIDDEN)
-    expect(page.locator(".side-tab.left")).to_be_hidden()
+    expect(page.locator(".side-bar.left")).to_have_attribute("title", "Hide the parts ([)")
     page.locator("#board-button").click()
-    expect(page.locator(".side-tab.left")).to_be_visible()
-    page.locator(".side-tab.left").click()
+    expect(page.locator(".side-bar.left")).to_have_attribute("title", "Show the tray ([)")
+    page.locator(".side-bar.left").click()
     expect(page.locator("#board-tray")).not_to_have_class(HIDDEN)
     assert board_x(page, "R1") == pytest.approx(x, abs=0.5)
 
@@ -132,63 +132,81 @@ def test_a_review_shows_the_hidden_right_column_once(page: Page, base_url: str) 
     page.keyboard.press("]")
     expect(column).to_have_class(HIDDEN)
     expect(page.locator("section.canvas")).to_have_class(re.compile(r"\breviewing\b"))
-    tab = page.locator(".side-tab.right")
-    expect(tab).to_have_attribute("title", "Show the review (])")
-    tab.click()
+    bar = page.locator(".side-bar.right")
+    expect(bar).to_have_attribute("title", "Show the review (])")
+    bar.click()
     expect(column).not_to_have_class(HIDDEN)
     expect(review).to_be_visible()
 
 
-def canvas_edge(page: Page, side: str) -> tuple[float, float]:
-    """A point on the canvas's very edge, a quarter down (clear of the edge tab)."""
-    box = page.locator("section.canvas").bounding_box()
+def bar_point(page: Page, side: str) -> tuple[float, float]:
+    """The middle of a side's bar, a quarter of the way down."""
+    box = page.locator(f".side-bar.{side}").bounding_box()
     assert box
-    x = box["x"] + 2 if side == "left" else box["x"] + box["width"] - 3
-    return x, box["y"] + box["height"] / 4
+    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 4
 
 
-def test_the_header_toggle_hides_and_the_edge_peeks(page: Page, base_url: str) -> None:
+def test_the_bar_hides_and_peeks(page: Page, base_url: str) -> None:
     open_circuit(page, base_url, "ts808")
     results = page.locator("aside.panels")
-    toggle = page.locator("#side-toggle-right")
-    # open is the default: nothing lit
-    expect(toggle).to_have_attribute("aria-pressed", "false")
-    expect(toggle).to_have_attribute("title", "Hide the results (])")
-    expect(page.locator("#side-toggle-left")).to_have_attribute("title", "Hide the parts ([)")
+    bar = page.locator(".side-bar.right")
+    expect(bar).to_have_attribute("aria-expanded", "true")
+    expect(bar).to_have_attribute("title", "Hide the results (])")
     where = to_screen(page, *part_pos(page, "Q1"))
     width = canvas_width(page)
-    toggle.click()
+    # resting on a shown side's bar doesn't peek
+    page.mouse.move(*bar_point(page, "right"))
+    page.wait_for_timeout(400)
+    expect(results).not_to_have_class(re.compile(r"\bside-peek\b"))
+    bar.click()
     expect(results).to_have_class(HIDDEN)
-    expect(results).not_to_be_in_viewport()
-    expect(toggle).to_have_attribute("aria-pressed", "true")  # on: hidden
-    expect(toggle).to_have_attribute("title", "Show the results (])")
+    expect(results).to_be_hidden()
+    expect(bar).to_have_attribute("aria-expanded", "false")
+    expect(bar).to_have_attribute("title", "Show the results (])")
     wide = canvas_width(page)
     assert wide == pytest.approx(width + 440, abs=1)
 
-    # resting on the canvas's edge slides it out over the drawing, which doesn't move
-    page.mouse.move(*canvas_edge(page, "right"))
+    # resting on the hidden side's bar slides it out over the drawing, which doesn't move
+    page.mouse.move(400, 400)
+    page.mouse.move(*bar_point(page, "right"))
     expect(results).to_have_class(re.compile(r"\bside-peek\b"))
     expect(results).to_be_in_viewport()
     assert canvas_width(page) == pytest.approx(wide, abs=1)
     assert to_screen(page, *part_pos(page, "Q1")) == pytest.approx(where, abs=0.5)
-    expect(toggle).to_have_attribute("title", "Pin the results (])")
+    expect(bar).to_have_attribute("title", "Pin the results (])")
     # leaving it slides it back
     page.mouse.move(400, 400)
     expect(results).not_to_have_class(re.compile(r"\bside-peek\b"))
-    expect(results).not_to_be_in_viewport()
+    expect(results).to_be_hidden()
 
-    # peeked again and pinned by its toggle: back in its column, the drawing still
-    page.mouse.move(*canvas_edge(page, "right"))
+    # peeked again and pinned by a click on the bar: back in its column, the drawing still
+    page.mouse.move(*bar_point(page, "right"))
     expect(results).to_have_class(re.compile(r"\bside-peek\b"))
-    toggle.click()
+    bar.click()
     expect(results).not_to_have_class(HIDDEN)
     expect(results).not_to_have_class(re.compile(r"\bside-peek\b"))
     assert canvas_width(page) == pytest.approx(width, abs=1)
     assert to_screen(page, *part_pos(page, "Q1")) == pytest.approx(where, abs=0.5)
-    expect(toggle).to_have_attribute("aria-pressed", "false")
+    expect(bar).to_have_attribute("aria-expanded", "true")
 
 
-def test_a_drag_reaching_the_edge_does_not_peek(page: Page, base_url: str) -> None:
+def test_a_peek_covers_its_own_large_view(page: Page, base_url: str) -> None:
+    open_circuit(page, base_url, "ts808")
+    frequency = page.locator("#panel-frequency")
+    page.locator("#frequency-expand").click()
+    expect(frequency).to_have_class(re.compile(r"\blarge-view\b"))
+    page.keyboard.press("]")
+    expect(page.locator("aside.panels")).to_have_class(HIDDEN)
+    expect(frequency).to_be_visible()  # out as it was
+    page.mouse.move(*bar_point(page, "right"))
+    expect(page.locator("aside.panels")).to_have_class(re.compile(r"\bside-peek\b"))
+    expect(frequency).to_be_hidden()  # tucked away while its column peeks over everything
+    page.mouse.move(400, 400)
+    expect(page.locator("aside.panels")).not_to_have_class(re.compile(r"\bside-peek\b"))
+    expect(frequency).to_be_visible()
+
+
+def test_a_drag_reaching_the_bar_does_not_peek(page: Page, base_url: str) -> None:
     open_circuit(page, base_url, "ts808")
     page.keyboard.press("[")
     palette = page.locator("#palette")
@@ -197,7 +215,7 @@ def test_a_drag_reaching_the_edge_does_not_peek(page: Page, base_url: str) -> No
     assert box
     page.mouse.move(box["x"] + 300, box["y"] + 60)
     page.mouse.down()
-    page.mouse.move(*canvas_edge(page, "left"), steps=5)
-    page.wait_for_timeout(500)  # longer than the edge's rest before a peek
+    page.mouse.move(*bar_point(page, "left"), steps=5)
+    page.wait_for_timeout(500)  # longer than the bar's rest before a peek
     expect(palette).not_to_have_class(re.compile(r"\bside-peek\b"))
     page.mouse.up()

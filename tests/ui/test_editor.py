@@ -55,8 +55,8 @@ def show_area(page: Page, x0: float, y0: float, x1: float, y1: float) -> None:
     centre = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     for _ in range(10):
         (ax, ay), (bx, by) = to_screen(page, x0, y0), to_screen(page, x1, y1)
-        if bx - ax < 0.9 * box["width"] and by - ay < 0.9 * box["height"]:
-            break
+        if bx - ax < box["width"] - 20 and by - ay < box["height"] - 20:
+            break  # on screen, 10 px to spare a side: zoomed out no further, so pins stay apart
         page.mouse.move(*centre)
         page.mouse.wheel(0, 400)
     (ax, ay), (bx, by) = to_screen(page, x0, y0), to_screen(page, x1, y1)

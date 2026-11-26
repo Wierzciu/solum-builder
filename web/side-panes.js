@@ -2,11 +2,10 @@
  * Side panes that hide (D-408): each view (the Schematic and the Board) has a left side
  * (the palette; the tray) and a right column (the result panes; the board's panes), and
  * either can be hidden to give the canvas the width, the drawing kept where it is on
- * screen. Two toggles in the header hide and show them, each "on" while its side is hidden
- * (open is the default, so nothing's lit until something is hidden); a hidden side leaves a
- * tab on the canvas's edge that brings it back pinned in its place, and resting the pointer
- * on the canvas's very edge slides it out over the drawing until the pointer leaves (its
- * toggle then pins it). Sides slide in and out. Remembered per view and per side (`solum.sides`, kept by the
+ * screen. A thin bar at each end of the window, beyond its column, is always there: a click
+ * hides the column or shows it; while it's hidden, resting on the bar slides the column out
+ * over the drawing until the pointer leaves, and a click then pins it. Sides slide in and
+ * out. Remembered per view and per side (`solum.sides`, kept by the
  * server with the pane order, D-311). `[` and `]` toggle the left and the right side.
  *
  * The state is plain data (`readSides`, `withSide`), tested on its own; `sidePanes` puts
@@ -61,38 +60,26 @@ export function sideTitle(action, view, side, reviewing) {
   return `${action} ${what} (${KEYS[side]})`;
 }
 
-/**
- * A side's toggle icon: a window with that side's strip, filled while the side is shown
- * and empty while it's hidden (app.css), so it reads without its colour.
- * @param {Side} side
- */
-function panelIcon(side) {
-  const x = side === "left" ? 1.5 : 10.5;
-  const line = side === "left" ? 5.5 : 10.5;
-  return `<svg viewBox="0 0 16 12" aria-hidden="true"><rect class="frame" x="0.5" y="0.5" width="15" height="11" rx="1.5"/>`
-    + `<rect class="strip" x="${x}" y="1.5" width="4" height="9"/><line class="frame" x1="${line}" y1="1" x2="${line}" y2="11"/></svg>`;
-}
-
 /** How long a side takes to slide in or out (app.css's `.side-pane` transition), ms. */
 const SLIDE_MS = 180;
-/** How long the pointer rests on the canvas's edge before a hidden side peeks out, ms. */
+/** How long the pointer rests on a hidden side's bar before the side peeks out, ms. */
 const PEEK_DWELL_MS = 150;
 /** How long after the pointer leaves a peeking side it slides back, ms. */
 const PEEK_LEAVE_MS = 300;
 
 /**
  * The side panes on the page.
- * @param {HTMLElement} host the canvas, where the edge tabs and the peek strips go
+ * @param {HTMLElement} workspace the row the columns and the canvas sit in: the bars go at
+ *   its two ends, on the columns' outer edges
  * @param {{
- *   toolbar: HTMLElement,
  *   columns: Record<View, Record<Side, HTMLElement>>,
  *   view: () => View,
  *   keepPlace: (change: () => void) => void,
  *   changed?: () => void,
- * }} opts `toolbar`: where the header's two toggles go; `keepPlace`: runs the change with the view shown's drawing kept still;
+ * }} opts `keepPlace`: runs the change with the view shown's drawing kept still;
  *   `changed`: told after a side is hidden or shown (the menus' ticks)
  */
-export function sidePanes(host, opts) {
+export function sidePanes(workspace, opts) {
   let sides = readSides(remembered(SIDES_KEY));
   let reviewing = false;
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -102,33 +89,28 @@ export function sidePanes(host, opts) {
   let peeking = /** @type {null | Side} */ (null);
   let peekTimer = 0;
 
-  /** Each side's edge tab and peek strip on the canvas. @type {Record<Side, {tab: HTMLButtonElement, edge: HTMLElement}>} */
-  const edges = /** @type {any} */ ({});
+  /**
+   * Each side's bar, always there at the window's edge beyond its column: a click hides
+   * the column or shows it (pins it while it peeks); resting on it while hidden peeks it.
+   * @type {Record<Side, HTMLButtonElement>}
+   */
+  const bars = /** @type {any} */ ({});
   for (const side of SIDES) {
-    const tab = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: `side-tab ${side}`, "data-side": side, hidden: "" }, [side === "left" ? "›" : "‹"]));
-    tab.addEventListener("click", () => set(side, false));
-    const edge = h("div", { class: `side-edge ${side}`, "data-side": side, hidden: "" });
-    edge.addEventListener("pointerenter", (e) => {
-      if (e.buttons) return; // a drag reaching the edge isn't asking for the pane
+    const bar = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: `side-bar ${side}`, "data-side": side }));
+    bar.addEventListener("click", () => set(side, !sides[opts.view()][side]));
+    bar.addEventListener("pointerenter", (e) => {
       clearTimeout(peekTimer);
+      if (e.buttons || !sides[opts.view()][side]) return; // a drag reaching it, or a side shown: no peek
       peekTimer = window.setTimeout(() => peek(side), PEEK_DWELL_MS);
     });
-    edge.addEventListener("pointerleave", () => {
+    bar.addEventListener("pointerleave", () => {
       clearTimeout(peekTimer);
       if (peeking === side) peekTimer = window.setTimeout(unpeek, PEEK_LEAVE_MS);
     });
-    edges[side] = { tab, edge };
-    host.append(edge, tab);
+    bars[side] = bar;
   }
-
-  /** The header's two toggles, one per side: "on" while that side is hidden. */
-  const toggles = /** @type {Record<Side, HTMLButtonElement>} */ (Object.fromEntries(SIDES.map((side) => {
-    const button = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "side-toggle", id: `side-toggle-${side}`, "data-side": side, "aria-pressed": "false" }));
-    button.innerHTML = panelIcon(side);
-    button.addEventListener("click", () => set(side, !sides[opts.view()][side])); // shown: hide; hidden: show (peeking: pinned where it is)
-    return [side, button];
-  })));
-  opts.toolbar.append(h("span", { class: "side-toggles", role: "group", "aria-label": "Side panes" }, SIDES.map((side) => toggles[side])));
+  workspace.prepend(bars.left);
+  workspace.append(bars.right);
 
   for (const v of VIEWS) {
     for (const s of SIDES) {
@@ -155,24 +137,18 @@ export function sidePanes(host, opts) {
       }
     }
     if (peeking && !column(peeking).classList.contains("side-peek")) peeking = null;
-    const view = opts.view();
-    for (const s of SIDES) {
-      const { tab, edge } = edges[s];
-      tab.hidden = edge.hidden = !sides[view][s];
-      tab.title = sideTitle("Show", view, s, reviewing);
-      tab.setAttribute("aria-label", tab.title);
-    }
-    showToggles();
+    showBars();
   }
 
-  /** The header's toggles: on while the side is hidden; what a click does, in its tooltip. */
-  function showToggles() {
+  /** The bars: the chevron pointing the way a click moves the column; what it does, in its tooltip. */
+  function showBars() {
     const view = opts.view();
     for (const s of SIDES) {
       const hidden = sides[view][s];
-      toggles[s].setAttribute("aria-pressed", String(hidden));
-      toggles[s].title = sideTitle(!hidden ? "Hide" : peeking === s ? "Pin" : "Show", view, s, reviewing);
-      toggles[s].setAttribute("aria-label", toggles[s].title);
+      bars[s].textContent = (s === "left") === hidden ? "›" : "‹";
+      bars[s].setAttribute("aria-expanded", String(!hidden));
+      bars[s].title = sideTitle(!hidden ? "Hide" : peeking === s ? "Pin" : "Show", view, s, reviewing);
+      bars[s].setAttribute("aria-label", bars[s].title);
     }
   }
 
@@ -183,14 +159,14 @@ export function sidePanes(host, opts) {
     if (peeking && peeking !== side) unpeek();
     peeking = side;
     column(side).classList.add("side-peek");
-    showToggles();
+    showBars();
   }
 
   function unpeek() {
     clearTimeout(peekTimer);
     if (peeking) column(peeking).classList.remove("side-peek");
     peeking = null;
-    showToggles();
+    showBars();
   }
 
   /** Run the change with the column's slide turned off, so it lands where it is. @param {HTMLElement} col @param {() => void} change */
@@ -261,7 +237,7 @@ export function sidePanes(host, opts) {
     toggle: (side) => set(side, undefined),
     /** Whether a side of the view shown is hidden. @param {Side} side */
     hidden: (side) => sides[opts.view()][side],
-    /** The view changed: its sides and tabs. */
+    /** The view changed: its sides and bars. */
     refresh() {
       finishSlide();
       unpeek();
