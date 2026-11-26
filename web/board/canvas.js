@@ -115,12 +115,14 @@ export function boardCanvas(svg, app) {
   let litItems = [];
   /** @type {Set<string>} */
   let litNets = new Set();
+  /** @type {Set<number>} the off-board wires lit: the selected net's (D-406) */
+  let litWires = new Set();
   /** @type {Ghost | null} */
   let ghosted = null;
   let pressing = false; // a press on the board is being dragged: no hover then
   let copper = false; // the copper side up (Hide parts, D-390)
-  let mirrored = false; // and turned over, as you hold the board to solder (Mirror, D-390)
-  const turned = () => copper && mirrored;
+  let mirrored = false; // either side turned over, as you hold the board to solder (Flip)
+  const turned = () => mirrored;
   let flipping = false;
   /** @type {Parameters<typeof draw> | null} the last drawing, drawn again when the board turns over */
   let drawn = null;
@@ -244,7 +246,6 @@ export function boardCanvas(svg, app) {
         el("rect", { x: x - half, y: y - half, width: STEP, height: STEP, class: "ruler-hit" }, g);
         const label = el("text", { x, y, "text-anchor": "middle", "dominant-baseline": "central" }, g);
         label.textContent = text;
-        if (turned()) label.setAttribute("transform", `translate(${2 * x} 0) scale(-1 1)`); // readable on the mirrored side
         el("title", {}, g).textContent = `${axis === "column" ? "Column" : "Strip"} ${text}: insert or remove`;
       };
       for (let c = 0; c < board.columns; c++) mark("column", c, c * STEP, (s0 - 1) * STEP, columnName(c));
@@ -327,11 +328,20 @@ export function boardCanvas(svg, app) {
       el("title", {}, g).textContent = title;
     }
     el("g", { class: "ghost" }, root);
+    // turned over: every name, value and label turned back about where it stands, readable
+    if (turned()) for (const t of root.querySelectorAll("text")) t.setAttribute("transform", `translate(${2 * Number(t.getAttribute("x"))} 0) scale(-1 1)`);
     if (fitting || !shown) fit();
     else apply();
     light(lit, litItems);
     lightNets(litNets);
+    lightWires(litWires);
     ghost(ghosted);
+  }
+
+  /** Light the off-board wires `indexes` (the selected net's, D-406). @param {Set<number>} indexes */
+  function lightWires(indexes) {
+    litWires = indexes;
+    for (const g of svg.querySelectorAll(".off-wire")) g.classList.toggle("lit", indexes.has(Number(g.getAttribute("data-wire"))));
   }
 
   /** Light the ratsnest lines of `nets` (a selected or carried part's, D-377). @param {Set<string>} nets */
@@ -377,8 +387,8 @@ export function boardCanvas(svg, app) {
   }
 
   /**
-   * Show the parts side or the copper side (`up`, Hide parts), the copper side mirrored or
-   * not (`mirror`), D-390 (was D-378's one flip, always mirrored). A change of mirroring is a
+   * Show the parts side or the copper side (`up`, Hide parts), either turned over or not
+   * (`mirror`: Flip shows the back, the copper side turned over, D-406). A change of mirroring is a
    * short animation turning the board over, none when the system asks for less motion; the
    * rest is at once. Holes are picked through the mirror.
    * @param {boolean} up @param {boolean} mirror @param {(copper: boolean) => void} [done] told the side now up
@@ -394,8 +404,8 @@ export function boardCanvas(svg, app) {
       done?.(copper);
     };
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (still || !drawn || before === (up && mirror)) return land();
-    const to = up && mirror;
+    if (still || !drawn || before === mirror) return land();
+    const to = mirror;
     // the drawing may be replaced on the way (edge on, or a fresh check): find it each frame
     const turn = (/** @type {number} */ scale) => svg.querySelector("g.board")?.setAttribute("transform", `translate(${middle() * (1 - scale)} 0) scale(${scale} 1)`);
     flipping = true;
@@ -548,6 +558,7 @@ export function boardCanvas(svg, app) {
     },
     light,
     lightNets,
+    lightWires,
     fit,
     ghost,
     holeAt,

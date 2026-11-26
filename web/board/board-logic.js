@@ -576,13 +576,15 @@ const INSIDE = 6; // a step across a switch's outline costs this many beside it 
 const OUTLINE = 12; // a step on the outline's own line: crossed once to reach a lug, never run along (D-384)
 const BESIDE = 4; // a step right beside another wire running the same way: they'd read as one line
 const LUG_CLEAR = STEP * 0.55; // a lug's ring: other wires keep this far from its middle
+const BODY = 40; // a step over a body, when no route keeps off them (D-406): as few as can be
+const DROP = 2; // grid steps from its hole a wire may cross a body beside it, to drop in (D-406)
 
 /**
- * @typedef {{boxes: Box[], lines: Array<[number, number, number, number]>, soft?: Box[], lugs?: Array<[number, number]>}} Obstacles
+ * @typedef {{boxes: Box[], lines: Array<[number, number, number, number]>, soft?: Box[], lugs?: Array<[number, number]>, labels?: Box[]}} Obstacles
  *   what a wire keeps off (D-379): parts' bodies (board parts and off-board parts) and the
  *   leads of board parts, in board units; `soft`: switches' outlines, crossed only at a
  *   cost (D-384); `lugs`: every off-board lug, wired or not, whose ring only its own wires
- *   cross
+ *   cross; `labels`: the names drawn above switches, kept off as bodies are (D-406)
  */
 
 /**
@@ -594,7 +596,8 @@ const LUG_CLEAR = STEP * 0.55; // a lug's ring: other wires keep this far from i
 export function wireObstacles(board, footprints, items) {
   const shapes = items.map(({ item, at }) => itemShape(item, at));
   /** @type {Obstacles} */
-  const found = { boxes: shapes.filter((x) => x.wall).map((x) => x.body), lines: [], soft: shapes.filter((x) => !x.wall).map((x) => x.body), lugs: shapes.flatMap((x) => x.lugs.map((l) => /** @type {[number, number]} */ ([l.x, l.y]))) };
+  const found = { boxes: shapes.filter((x) => x.wall).map((x) => x.body), lines: [], soft: shapes.filter((x) => !x.wall).map((x) => x.body), lugs: shapes.flatMap((x) => x.lugs.map((l) => /** @type {[number, number]} */ ([l.x, l.y]))),
+    labels: shapes.filter((x) => !x.wall).map((x) => ({ x: x.body.x, y: x.body.y - STEP, w: x.body.w, h: STEP })) }; // a switch's name sits just above it
   for (const placed of board.parts) {
     const fp = footprints[placed.ref];
     if (!fp) continue;
@@ -666,8 +669,10 @@ function searchRoutes(lines, board, obstacles) {
     const onRuler = (Math.abs(y + ruled * STEP) < STEP / 2 && x >= edge.left && x <= edge.right) || (Math.abs(x + ruled * STEP) < STEP / 2 && y >= edge.top && y <= edge.bottom);
     dear[n] = onLine || onRuler ? 3 : soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) ? 2 : over ? 1 : 0;
     if (over && x % STEP === 0 && y % STEP === 0) wall[n] = 1; // a hole: only a wire's own end goes in
-    if (obstacles.boxes.some((b) => x > b.x - 1 && x < b.x + b.w + 1 && y > b.y - 1 && y < b.y + b.h + 1)) wall[n] = 1;
-    if (obstacles.lines.some(([ax, ay, bx, by]) => nearSegment(x, y, ax, ay, bx, by) < 1.5)) wall[n] = 1;
+    // a body or a lead (2): kept off, but crossed to drop into a hole beside it, or when nothing else reaches
+    else if (obstacles.boxes.some((b) => x > b.x - 1 && x < b.x + b.w + 1 && y > b.y - 1 && y < b.y + b.h + 1)) wall[n] = 2;
+    else if (obstacles.lines.some(([ax, ay, bx, by]) => nearSegment(x, y, ax, ay, bx, by) < 1.5)) wall[n] = 2;
+    else if ((obstacles.labels ?? []).some((b) => x >= b.x && x <= b.x + b.w && y > b.y && y < b.y + b.h)) wall[n] = 2; // a switch's name, as a body
   }
   for (const l of lines) if (l) wall[node(l.x1, l.y1)] = 1; // every lug a wall but to its own wires
   // every lug's ring, wired or not: kept clear by other wires (the user, 2026-11-23: A1's wire ran over A2 and A3)
@@ -700,9 +705,18 @@ function searchRoutes(lines, board, obstacles) {
     const inside = (/** @type {number} */ x, /** @type {number} */ y) => soft.some((b) => x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h);
     const into = line.hole || inside(x2, y2) ? -1 : 3; // into another lug: from below, but a switch's from any side (D-384)
     const own = new Set([lugOf(x1, y1), line.hole ? -1 : lugOf(x2, y2)]);
-    const path = search(node(x1, y1), node(x2, y2), into, inside(x1, y1), own);
+    const goal = node(x2, y2);
+    // its hole between bodies (a pad between two caps, D-406): the last steps in cross them
+    const drop = new Set();
+    if (line.hole) for (const [di, dj] of DIRS) for (let k = 1; k <= DROP; k++) {
+      const m = goal + dj * k * cols + di * k;
+      if (m < 0 || m >= wall.length || wall[m] !== 2) break;
+      drop.add(m);
+    }
+    const path = search(node(x1, y1), goal, into, inside(x1, y1), own, drop, false)
+      ?? search(node(x1, y1), goal, into, inside(x1, y1), own, drop, true); // walled in: over the fewest bodies
     /** @type {Array<[number, number]>} */
-    let points = path ? path.map(xy) : [[x1, y1], [x1, y2], [x2, y2]]; // walled in: straight, as before
+    let points = path ? path.map(xy) : [[x1, y1], [x1, y2], [x2, y2]]; // nothing reaches: straight
     points[0] = [x1, y1];
     points[points.length - 1] = [x2, y2];
     points = tidy(points);
@@ -736,8 +750,11 @@ function searchRoutes(lines, board, obstacles) {
    * null when there's none.
    * @param {number} start @param {number} goal @param {number} into @param {boolean} anyWay
    * @param {Set<number>} own the lugs this wire may cross the rings of: its own ends'
+   * @param {Set<number>} drop bodies beside its hole it may cross to drop in
+   * @param {boolean} overBodies bodies crossed at a cost (`BODY`) rather than kept off
    */
-  function search(start, goal, into, anyWay, own) {
+  function search(start, goal, into, anyWay, own, drop, overBodies) {
+    const blocked = (/** @type {number} */ m) => (wall[m] === 1 || (wall[m] === 2 && !overBodies && !drop.has(m)) || (ring[m] >= 0 && !own.has(ring[m])));
     const [gi, gj] = [goal % cols, Math.floor(goal / cols)];
     const cost = new Float64Array(cols * rows * 4).fill(Infinity);
     const from = new Int32Array(cols * rows * 4).fill(-1);
@@ -748,7 +765,7 @@ function searchRoutes(lines, board, obstacles) {
       if (fi < 0 || fj < 0 || fi >= cols || fj >= rows) continue;
       const first = at(fi, fj);
       if (first === goal) return [start, goal];
-      if (wall[first] || (ring[first] >= 0 && !own.has(ring[first]))) continue;
+      if (blocked(first)) continue;
       cost[first * 4 + e] = 1;
       from[first * 4 + e] = start * 4 + e;
       heap.push(first * 4 + e, 1 + Math.abs(gi - fi) + Math.abs(gj - fj));
@@ -763,9 +780,10 @@ function searchRoutes(lines, board, obstacles) {
         const [ni, nj] = [i + di, j + dj];
         if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
         const m = at(ni, nj);
-        if (m === goal ? into >= 0 && e !== into : wall[m] || (ring[m] >= 0 && !own.has(ring[m]))) continue;
+        if (m === goal ? into >= 0 && e !== into : blocked(m)) continue;
         const level = e < 2 ? 1 : 2;
         let step = dear[m] === 3 ? OUTLINE : dear[m] === 2 ? INSIDE : dear[m] ? ON_BOARD : 1;
+        if (wall[m] === 2) step += BODY; // over a body: dropping into its hole, or no other way
         if (e !== d) step += BEND;
         if (used[m] & level || (used[m] && e !== d)) step += ON_TOP;
         else if (used[m]) step += CROSS;
@@ -957,37 +975,41 @@ export function spotFor(item, hole) {
 
 /**
  * The editor's settings (spec, *Editor settings*), each on or off, remembered per viewer
- * (`solum.board`). `acts`: whether it does anything yet (the rest come with the editing
- * and guidance they belong to, P6b and P6c).
+ * (`solum.board`), in the order shown. `acts`: whether it does anything yet. `group`: where
+ * its toggle is (D-406): the Settings pane's *Show* or *While editing*, the tray's heading
+ * (`tray`), or the canvas's bar (`bar`).
  */
 export const BOARD_SETTINGS = /** @type {const} */ ([
-  { key: "values", label: "Show values", on: true, acts: true, title: "Label each part with its value as well as its ref" },
-  { key: "next", label: "What to place next", on: true, acts: true, title: "Suggest the part to place next, at the top of the tray" },
-  { key: "shorts", label: "Allow shorts while editing, shown red", on: true, acts: true, title: "Off: a move that makes a short is refused" },
-  { key: "grow", label: "Auto-grow", on: true, acts: true, title: "The board grows to take in what's placed by its edge, and shrinks back. Off: it stays its size (the margin greyed); add or remove lines on the rulers" },
-  { key: "seeThrough", label: "See-through", on: false, acts: true, title: "The parts faint, so the copper and the cuts under them show" },
-  { key: "mirror", label: "Mirror the copper side", on: false, acts: true, title: "The copper side turned over, as you hold the board to solder (D-390). Off: as seen from the parts side" },
-  { key: "rats", label: "Ratsnest lines: all", on: true, acts: true, title: "The dashed lines between the pieces of each net still to join. Off: only the lines of the part selected or carried" },
-  { key: "rails", label: "Highlight rails", on: false, acts: true, title: "The supply's copper (V+, V-) rose, ground's grey" },
+  { key: "values", label: "Values", group: "show", on: true, acts: true, title: "Label each part with its value as well as its ref" },
+  { key: "rails", label: "Rails", group: "show", on: false, acts: true, title: "Highlight the rails: the supply's copper (V+, V-) rose, ground's grey" },
+  { key: "rats", label: "Ratsnest", group: "show", on: true, acts: true, title: "The dashed lines between the pieces of each net on the board still to join. Off: only the lines of the part selected or carried" },
+  { key: "grow", label: "Auto-grow", group: "edit", on: true, acts: true, title: "The board grows to take in what's placed by its edge, and shrinks back. Off: it stays its size (the margin greyed); add or remove lines on the rulers" },
+  { key: "shorts", label: "Allow shorts", group: "edit", on: true, acts: true, title: "A move that makes a short is allowed, the short shown red. Off: it's refused" },
+  { key: "next", label: "Suggest next", group: "tray", on: true, acts: true, title: "Suggest the part to place next, at the top of the tray" },
+  { key: "seeThrough", label: "See-through", group: "show", on: false, acts: true, title: "The parts faint, so the copper and the cuts under them show (T)" },
+  { key: "mirror", label: "Flip", group: "bar", on: false, acts: true, title: "The back of the board: the copper side, turned over as you hold it to solder. Off: the front, the parts side" },
 ]);
 
 /**
  * The Layout dialog's choices (P6h2), in order, each with a line saying what it does and,
- * when it can't be chosen, why (`why`): Fill the rest and Tidy up need something placed.
+ * when it can't be chosen, why (`why`): Fill the rest and Tidy up need something placed,
+ * and Fill the rest something to fill (a part in the tray or a net in pieces).
  * The first is *Start a board* on an empty board, *Start over* once parts are placed; it
  * has *Make the board compact* under it (the dialog's own checkbox). The last, below a
  * divider, *Build a full layout* (D-399), has Quick and Thorough under it.
  * @typedef {"start" | "fill" | "tidy" | "full"} LayoutChoice
  * @param {boolean} placed whether any part is on the board
+ * @param {boolean} [rest] whether anything is left to fill: a part in the tray, a net in pieces
  * @returns {Array<{value: LayoutChoice, label: string, text: string, why: string}>}
  */
-export function layoutChoices(placed) {
+export function layoutChoices(placed, rest = true) {
   const none = placed ? "" : "Nothing is placed yet: start a board first.";
+  const filled = none || (rest ? "" : "Every part is placed and every net joined: nothing left to fill.");
   return [
     placed
       ? { value: "start", label: "Start over", text: "Wipes the board and lays it all out afresh: a base layout, the parts in signal order left to right, for you to edit by hand.", why: "" }
       : { value: "start", label: "Start a board", text: "A base layout of the whole board, the parts in signal order left to right, for you to edit by hand.", why: "" },
-    { value: "fill", label: "Fill the rest", text: "Keeps what you've placed and lays out the parts still in the tray below it.", why: none },
+    { value: "fill", label: "Fill the rest", text: "Keeps what you've placed and lays out the parts still in the tray below it.", why: filled },
     { value: "tidy", label: "Tidy up", text: "Makes the board smaller by moving parts, links and cuts in small steps, keeping the check passing.", why: none },
     { value: "full", label: "Build a full layout", text: "Starts afresh and does everything for you: lays the board out, then keeps making it smaller, wired and checked. Replaces what's on the board.", why: "" },
   ];

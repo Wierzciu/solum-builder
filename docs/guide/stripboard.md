@@ -8,13 +8,13 @@ Plan the stripboard (Veroboard) for a circuit before you solder it. The board is
 
 Click **Board** in the header, just before the circuit's name (or Tools → **Stripboard layout**). Click it again to go back to the schematic. The button has a small mark once the circuit has a board.
 
-The first time, the board is empty and every part is in the tray. Nothing is saved until you place something, so a look costs nothing. A board is kept in the circuit file and saved with it; **Remove board**, at the bottom of the board's Settings pane, takes it away (Undo brings it back).
+The first time, the board is empty and every part is in the tray. Nothing is saved until you place something, so a look costs nothing. A board is kept in the circuit file and saved with it; **Clear board**, at the bottom of the board's Settings pane, takes it away after asking (Undo brings it back).
 
 The Board view swaps the screen around:
 
 - **Tray** on the left, in the palette's place: the parts still to place.
 - **The board** in the middle, at real proportions, seen from the parts side. The line under it gives its size, cuts, links and wires: *20 × 16 holes (51 × 41 mm), 20 cuts, 11 links, 14 wires*.
-- **The board's panes** on the right, in the result panes' place: **Warnings**, **Notes**, **Schematic** (a small copy; selecting a part lights it on both drawings), **Nets** and **Settings**. They move and fold as the result panes do, and keep their own order. Back in the schematic the result panes return as they were.
+- **The board's panes** on the right, in the result panes' place: **Warnings**, **Notes**, **Schematic** (a small copy; selecting a part lights it on both drawings; **Expand** shows it large over the board), **Nets** and **Settings**. They move and fold as the result panes do, and keep their own order. Back in the schematic the result panes return as they were.
 
 Undo, Redo and History follow the view: the board has its own steps, so undoing on the board never undoes a schematic change. Save keeps both.
 
@@ -43,7 +43,7 @@ Drag a part from the tray onto the board, or click it and then click where it go
 
 Drag a placed part to move it; **Del** sends it back to the tray. Right-click a part for the same moves, **Back to the tray**, and for a trimmer its other shape (below). Hovering a part names its legs.
 
-The top-left buttons pick what a click does: **Parts** (P) places and moves parts, **Cuts** (C) cuts the strip at a hole or mends a cut, and **Links** (K) lays a wire link down a column, or lifts one.
+Grab a part or a wire and drag it to move it. Two buttons at the top of the tray change what a click does until you turn them off: **Cuts** (C) cuts the strip at a hole or mends a cut, and **Links** (K) lays a wire link down a column, or lifts one. Click the button again, or press Esc, to go back to moving parts.
 
 ### Guidance as you go
 
@@ -83,9 +83,9 @@ View → **Problem marks** marks each of these on the board where the bodies mee
 
 ## Off board parts and wires
 
-Drag a pot, jack or switch out of the tray to beside the board. Each is drawn by type with its lugs: a pot's three, a jack's T and S (T, R and S for a stereo jack), a footswitch as its square of lugs. Drag from a lug to a hole on the board to wire it, or to another lug; a wire can be left loose for now (it counts as still to do). Drag a wire's end to move it, or its middle to move its path. Right-click a wire to **Route it for me** again, **Leave its end loose** or **Take the wire off**, and an off-board part for **Back to the tray, with its wires**.
+Drag a pot, jack or switch out of the tray to beside the board. Each is drawn by type with its lugs: a pot's three, a jack's T and S (T, R and S for a stereo jack), a footswitch as its square of lugs. Drag from a lug to a hole on the board to wire it, or to another lug; a wire can be left loose for now (it counts as still to do). Click a wire to light its net, on the board and the schematic. Drag a wire's end to move it, or its middle to move its path. Right-click a wire to **Route it for me** again, **Leave its end loose** or **Take the wire off**, and an off-board part for **Back to the tray, with its wires**.
 
-**Wire it for me**, under the board, puts every off-board part at its usual spot (the pots along the top in knob order, the input jack on the right, the output on the left, the footswitch below) and wires each lug to the free hole on its strip that the shortest wire reaches. Wires run round the board's edge and hop where they cross.
+**Wire it for me**, under the board, puts every off-board part at its usual spot (the pots along the top in knob order, the input jack on the right, the output on the left, the footswitch below) and wires each lug to the free hole on its strip that the shortest wire reaches. Wires run round the board's edge, keep off parts and switches' names, and hop where they cross; a wire whose hole sits between two parts drops in between them.
 
 A wire on the wrong net is named at once, like a leg.
 
@@ -95,11 +95,11 @@ The board is whatever is on it: the box around every leg, body, link and wire pa
 
 ## Seeing the copper
 
-- **Hide parts** shows the copper side as seen from the parts side: the strips, the holes used, the cuts and the links.
-- **Mirror** turns it over, as you hold the board to solder.
-- **See-through** (T) fades the parts so the holes and cuts under them show.
+- **Flip** shows the back of the board: the copper side, turned over as you hold it to solder, with the strips, the holes used, the cuts and the links. Click it again for the front.
+- **Hide parts** shows the copper seen through from the front, lined up with the parts side, so you can match a strip to a part. It's greyed while the board is flipped.
+- **See-through** (T), in Settings, fades the parts so the holes and cuts under them show.
 
-Links are drawn in lavender on both sides. **Highlight rails**, in Settings, tints the supply's copper and ground's.
+Links are drawn in lavender on both sides. **Rails**, in Settings, tints the supply's copper and ground's.
 
 ![The copper side, parts hidden: strips, cuts and links](img/board-copper.png)
 
@@ -152,9 +152,9 @@ While it runs, a window shows its progress and the best board so far (*Best so f
 
 ### Looking before you keep it
 
-When it's done, a bar above the board compares the two: *Before 34 × 13 holes, 14 cuts, 15 links → After 15 × 7 holes, 11 cuts, 6 links*.
+When it's done, **Review the layout** opens at the top of the right-hand column and compares the two: *Before 34 × 13 holes, 14 cuts, 15 links → After 15 × 7 holes, 11 cuts, 6 links*. Until you keep a board, the canvas has a yellow outline and the board can't be edited: the tray, the panes, Cuts and Links are faded. **Flip** and **Hide parts** still work, on both boards in Both, and so does T for See-through.
 
-![The review bar in Both: the board before above, the new one below](img/board-review.png)
+![Review the layout in Both: the board before above, the new one below](img/board-review.png)
 
 - **After**, **Before** and **Both** show the new board, the old one, or the two, one above the other.
 - **Try another** searches again from the same start with other random moves, for a different board (sometimes a little smaller, sometimes bigger). **◀** and **▶** step between the tries. A circuit with little room says the try gave the same board as an earlier one.
@@ -164,15 +164,19 @@ The layout is the app's: check it, and adjust it if you need to, before you buil
 
 ## Board settings
 
-The Settings pane's switches are remembered for you on this computer, for every circuit:
+The Settings pane's buttons turn each setting on (outlined) or off. They're remembered for you on this computer, for every circuit.
 
-- **Show values**: label each part with its value as well as its ref.
-- **What to place next**: the suggestion at the top of the tray.
-- **Allow shorts while editing, shown red**: off, a move that makes a short is refused.
+Under **Show**:
+- **Values**: label each part with its value as well as its ref.
+- **Rails**: tint the supply's and ground's copper.
+- **Ratsnest**: the dashed lines joining the pieces of each net on the board that aren't joined yet. Off, only the lines of the part selected or carried.
+- **See-through** (T): the parts faint, so the holes and cuts under them show.
+
+Under **While editing**:
 - **Auto-grow**: the board grows to take in what's placed past its edge.
-- **See-through**, **Mirror the copper side**: as the buttons on the board.
-- **Ratsnest lines: all**: off, only the lines of the part selected or carried.
-- **Highlight rails**: tint the supply's and ground's copper.
+- **Allow shorts**: a move that makes a short is allowed, and the short is shown red. Off, it's refused.
+
+**Clear board**, at the bottom, asks first. **Suggest next**, in the tray's heading, turns the suggestion at the top of the tray on or off. **Hide parts** and **Flip** are on the board's own bar, outlined while they're on.
 
 A trimmer goes on as the square single-turn kind (triangle, Bourns 3362P) unless its form's **Board trimmer** says in line (Bourns 3296W); a placed one's right-click menu changes it too. A surface-mount transistor goes on the board on a TO-92 adapter, set by its form's **Mounting**.
 

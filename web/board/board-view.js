@@ -30,9 +30,9 @@
  */
 
 import { postJson } from "../api.js";
-import { ask } from "../editor/form.js";
+import { ask, confirmed } from "../editor/form.js";
 import { openMenu } from "../menus.js";
-import { h } from "../panels.js";
+import { h, largeView, stackLargeViews } from "../panels.js";
 import { reorderable } from "../panes.js";
 import { Schematic } from "../schematic/render.js";
 import { latestOnly } from "../state.js";
@@ -125,6 +125,8 @@ export function boardView(host, app) {
   let showPlaced = remembered(PLACED_KEY) === true; // the tray's placed parts shown
 
   const tools = $("board-tools");
+  const editTools = $("board-edit"); // Cuts and Links, at the top of the tray: the canvas kept clear (D-406)
+  const toolButtons = [...editTools.querySelectorAll("button[data-tool]")];
   /** @type {"parts" | "cuts" | "links"} */
   let tool = "parts";
   /** @type {Carried | null} */
@@ -250,38 +252,54 @@ export function boardView(host, app) {
     },
     lock(on) {
       locked = on;
-      for (const el of [tray, column, tools, sizeNote, $("board-needs")]) el.inert = on;
+      // the board locked: the tray, the panes, the editing tools; the view's buttons (Hide
+      // parts, Flip, See-through) and the review stay, and the canvas is outlined (D-406)
+      for (const el of [tray, sizeNote, $("board-needs"), ...column.querySelectorAll(":scope > details"), ...toolButtons]) /** @type {HTMLElement} */ (el).inert = on;
+      host.closest(".canvas")?.classList.toggle("reviewing", on);
       button.disabled = on;
       if (on) drop();
       runFrom = on ? app.circuit() : null;
     },
     keep: (stripboard) => app.editBoard(stripboard, "Build a full layout"),
     refuse: (message) => app.refuse(message),
-  });
+  }, column);
   trimButton.addEventListener("click", () => void resize("trim", "Trim the board"));
   wireButton.addEventListener("click", () => void wireForMe());
   layoutButton.addEventListener("click", () => void layOut());
   acceptButton.addEventListener("click", () => void boardEdit({ kind: "suggested" }, acceptButton.textContent ?? "Make the suggested cuts and links"));
-  const seeButton = $("board-see");
-  seeButton.setAttribute("aria-pressed", String(settings.seeThrough));
-  seeButton.addEventListener("click", (e) => {
-    setSetting("seeThrough", !settings.seeThrough);
-    if (e.detail) seeButton.blur(); // clicked: the board's keys act again
+  const nextButton = $("board-next"); // Suggest next, in the tray's heading (D-406)
+  nextButton.setAttribute("aria-pressed", String(settings.next));
+  nextButton.addEventListener("click", (e) => {
+    setSetting("next", !settings.next);
+    if (e.detail) nextButton.blur();
   });
+  const hideButton = $("board-hide");
   const flipButton = $("board-flip");
-  const mirrorButton = $("board-mirror");
-  mirrorButton.setAttribute("aria-pressed", String(settings.mirror));
-  const sideShown = (/** @type {boolean} */ copper) => flipButton.setAttribute("aria-pressed", String(copper));
-  flipButton.addEventListener("click", (e) => { // Hide parts (D-390)
-    canvas.show(!canvas.copper(), settings.mirror, sideShown);
-    if (e.detail) flipButton.blur(); // clicked: the board's keys act again
+  flipButton.setAttribute("aria-pressed", String(settings.mirror));
+  let hidden = false; // Hide parts: the front's copper seen through (D-390)
+  /** Hide parts pressed only on the front; greyed on the back, where there are no parts to hide. */
+  const sideShown = () => {
+    hideButton.setAttribute("aria-pressed", String(hidden && !settings.mirror));
+    /** @type {HTMLButtonElement} */ (hideButton).disabled = settings.mirror;
+  };
+  /** The side shown: Flip, the back (the copper turned over, as you solder it, D-406); else the front, parts hidden or not. @param {boolean} [now] no animation */
+  const showSide = (now = false) => {
+    const up = settings.mirror || hidden;
+    if (now) canvas.side(up, settings.mirror), beforeCanvas.side(up, settings.mirror), sideShown();
+    else canvas.show(up, settings.mirror, sideShown), beforeCanvas.show(up, settings.mirror); // Both, under review: the board before as well
+  };
+  showSide(true); // Flip is remembered: the board opens on the side it was left
+  hideButton.addEventListener("click", (e) => {
+    hidden = !hidden;
+    showSide();
+    if (e.detail) hideButton.blur(); // clicked: the board's keys act again
   });
-  mirrorButton.addEventListener("click", (e) => {
+  flipButton.addEventListener("click", (e) => { // Flip: the back of the board, or the front again
     setSetting("mirror", !settings.mirror);
-    if (e.detail) mirrorButton.blur();
+    if (e.detail) flipButton.blur();
   });
-  for (const b of tools.querySelectorAll("button[data-tool]")) b.addEventListener("click", () => {
-    setTool(/** @type {any} */ (b.getAttribute("data-tool")));
+  for (const b of toolButtons) b.addEventListener("click", () => {
+    toggleTool(/** @type {"cuts" | "links"} */ (b.getAttribute("data-tool")));
     b.blur(); // the board's keys act again
   });
   // a tray row dragged and let go: on the board it's put down, elsewhere dropped; not moved, it stays picked up
@@ -332,11 +350,16 @@ export function boardView(host, app) {
     }
   }
 
-  /** @param {"parts" | "cuts" | "links"} which */
+  /** Cuts or Links on, or off again (D-406: no Parts button, a part grabbed is a part moved). @param {"cuts" | "links"} which */
+  function toggleTool(which) {
+    setTool(tool === which ? "parts" : which);
+  }
+
+  /** @param {"parts" | "cuts" | "links"} which `parts`: neither tool on, parts and wires moved */
   function setTool(which) {
     tool = which;
     drop();
-    for (const b of tools.querySelectorAll("button[data-tool]")) b.setAttribute("aria-pressed", String(b.getAttribute("data-tool") === which));
+    for (const b of toolButtons) b.setAttribute("aria-pressed", String(b.getAttribute("data-tool") === which));
     svg.dataset.tool = which;
     canvas.ghost(null);
   }
@@ -498,7 +521,7 @@ export function boardView(host, app) {
       if (w.end === "new") {
         const item = progress?.items.find((i) => i.lugs.some((l) => l.end === w.lug));
         if (item) selectItem(item.ref);
-      }
+      } else selectWire(w.index); // a wire's end clicked: its net lit
       return;
     }
     if (w.end === "new") {
@@ -546,9 +569,17 @@ export function boardView(host, app) {
     bending = null;
     canvas.ghost(null);
     const wire = bent ? boardNow().wires[bent.index] : null;
+    if (bent && !moved) return selectWire(bent.index); // a wire's middle clicked: its net lit
     if (!bent || !wire || !moved || bent.at === null) return;
     const runs = [...(wire.runs ?? []).filter(([i]) => i !== bent.run), [bent.run, bent.at]];
     await boardEdit({ kind: "route", index: bent.index, runs }, `Move the wire from ${lugWords(wire.lug)}`);
+  }
+
+  /** A wire clicked: its net selected, so the wire lights with the rest of the net, on both drawings (D-406). @param {number} index */
+  function selectWire(index) {
+    const lug = boardNow().wires[index]?.lug;
+    const net = progress?.items.flatMap((i) => i.lugs).find((l) => l.end === lug)?.net;
+    if (net) app.select({ kind: "net", id: net });
   }
 
   /** A wire's menu: route it for me again, leave its end loose, or take it off. @param {number} index @param {number} x @param {number} y */
@@ -761,7 +792,9 @@ export function boardView(host, app) {
     const board = readBoard(app.circuit()?.stripboard);
     const times = postJson("api/stripboard/compact/estimate", { circuit: app.circuit() }).catch(() => null);
     const standUp = standUpOf(app.circuit()?.stripboard);
-    const chosen = await chooseLayout({ board, toPlace: progress?.to_place.length ?? 0, times, standUp });
+    const toPlace = progress?.to_place.length ?? 0;
+    const rest = toPlace > 0 || Boolean(progress?.nets.some((n) => n.state === "pieces"));
+    const chosen = await chooseLayout({ board, toPlace, rest, times, standUp });
     if (!chosen) return;
     if (chosen.choice === "full") return void run.start({ thorough: chosen.thorough, seconds: chosen.seconds, standUp: chosen.standUp });
     if (chosen.choice === "tidy") return void tidyUp(false, chosen.standUp);
@@ -839,6 +872,16 @@ export function boardView(host, app) {
     onPart: (ref) => app.select({ kind: "part", id: ref }),
     onEmpty: () => app.select(app.resting()),
   });
+  // Expand: the schematic large over the board, as the Frequency pane's over the schematic
+  // (D-107); it selects there as in the panel, fitted again at each size
+  const refit = () => requestAnimationFrame(() => drawSheet(true));
+  largeView(/** @type {HTMLDetailsElement} */ ($("board-schematic")), {
+    id: "board-schematic-expand",
+    name: "boardSchematic",
+    what: "A large view of the schematic, over the board",
+    onChange: refit,
+    onShow: refit,
+  });
 
   button.addEventListener("click", (e) => {
     show(!active);
@@ -863,7 +906,7 @@ export function boardView(host, app) {
     column.hidden = !board;
     tray.hidden = !board;
     sizeNote.hidden = !board;
-    tools.hidden = !board;
+    tools.hidden = editTools.hidden = nextButton.hidden = !board;
     if (!board) setTool("parts");
     button.setAttribute("aria-pressed", String(board));
     button.title = board ? "Back to the schematic" : BUTTON_TITLE;
@@ -876,6 +919,7 @@ export function boardView(host, app) {
       results.scrollTop = resultsScroll; // hidden, the list may forget where it was
     }
     app.shown(board);
+    stackLargeViews(); // the view shown's large views, its column laid out now
   }
 
   function drawSheet(fit = false) {
@@ -1178,28 +1222,34 @@ export function boardView(host, app) {
   function setSetting(key, on) {
     settings = { ...settings, [key]: on };
     remember(SETTINGS_KEY, settings);
-    seeButton.setAttribute("aria-pressed", String(settings.seeThrough));
-    mirrorButton.setAttribute("aria-pressed", String(settings.mirror));
-    if (key === "mirror") canvas.show(on || canvas.copper(), on, sideShown); // on from the parts side: the copper side, mirrored
+    flipButton.setAttribute("aria-pressed", String(settings.mirror));
+    nextButton.setAttribute("aria-pressed", String(settings.next));
+    if (key === "mirror") showSide(); // Flip: the back, or the front again; the board before too
     draw();
     fillPanes();
   }
 
-  /** Settings: *Layout…* first, the editor's settings, remembered per viewer; *Remove board* at the bottom once one is started. */
+  /**
+   * Settings: *Layout…* first; the editor's settings as toggles in two columns, *Show* and
+   * *While editing* (D-406), remembered per viewer; *Clear board* at the bottom, asked first,
+   * once one is started.
+   */
   function fillSettings() {
-    const boxes = BOARD_SETTINGS.map((setting) => {
-      const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", "data-setting": setting.key }));
-      box.checked = settings[setting.key];
-      box.disabled = !setting.acts;
-      box.addEventListener("change", () => setSetting(setting.key, box.checked));
-      const label = h("label", { class: setting.acts ? "board-setting" : "board-setting later" }, [box, " ", setting.label]);
-      label.title = setting.acts ? setting.title : `${setting.title}. Comes with placing parts.`;
-      return label;
+    /** @param {"show" | "edit"} group @param {string} head */
+    const group = (group, head) => [
+      h("h4", { class: "board-settings-head" }, [head]),
+      h("div", { class: "board-settings-grid" }, BOARD_SETTINGS.filter((s) => s.group === group).map((setting) => {
+        const toggle = h("button", { type: "button", class: "board-toggle", "data-setting": setting.key, "aria-pressed": String(settings[setting.key]), title: setting.title }, [setting.label]);
+        toggle.addEventListener("click", () => setSetting(setting.key, !settings[setting.key]));
+        return toggle;
+      })),
+    ];
+    const clear = h("button", { type: "button", id: "clear-board", class: "clear-board" }, ["Clear board"]);
+    clear.title = "Take every part, cut, link and wire off the board (Undo brings them back)";
+    clear.addEventListener("click", async () => {
+      if (await confirmed("Clear the board?", "Every part, cut, link and wire comes off the board. Edit → Undo brings them back.", "Clear board", "clear")) app.editBoard(null, "Clear board");
     });
-    const remove = h("button", { type: "button", id: "remove-board", class: "remove-board" }, ["Remove board"]);
-    remove.title = "Take every part, cut, link and wire off the board (Undo brings them back)";
-    remove.addEventListener("click", () => app.editBoard(null, "Remove board"));
-    $("board-settings-body").replaceChildren(layoutButton, ...boxes, ...(app.circuit()?.stripboard ? [remove] : []));
+    $("board-settings-body").replaceChildren(layoutButton, ...group("show", "Show"), ...group("edit", "While editing"), ...(app.circuit()?.stripboard ? [clear] : []));
   }
 
   /** The button marked once the open circuit has a board. */
@@ -1210,6 +1260,9 @@ export function boardView(host, app) {
   /** Light the selection on the board, off-board parts too. @param {Selection | null} selection */
   function light(selection) {
     focus();
+    const wires = boardNow().wires;
+    const lugNet = new Map(progress?.items.flatMap((i) => i.lugs).map((l) => [l.end, l.net]) ?? []);
+    canvas.lightWires(new Set(selection?.kind === "net" && !selection.resting ? wires.flatMap((w, i) => (lugNet.get(w.lug) === selection.id ? [i] : [])) : []));
     if (!selection || selection.resting || !progress) return canvas.light([]);
     const fps = progress.footprints;
     const items = progress.items;
@@ -1228,6 +1281,7 @@ export function boardView(host, app) {
      * @param {string} action
      */
     key(action) {
+      if (locked && action === "seeThrough") return setSetting("seeThrough", !settings.seeThrough), true; // T still looks under the parts in a review (D-406)
       if (locked) return true; // the board isn't editable while a full layout runs or is reviewed
       if (action === "cancel") {
         if (carry || carryItem || wiring || linkStart) drop();
@@ -1235,7 +1289,7 @@ export function boardView(host, app) {
         else return false;
         return true;
       }
-      if (action === "parts" || action === "cuts" || action === "links") return setTool(action), true;
+      if (action === "cuts" || action === "links") return toggleTool(action), true;
       if (action === "seeThrough") return setSetting("seeThrough", !settings.seeThrough), true;
       if (action === "remove") {
         const ref = carry?.from === "board" ? carry.ref : selectedPlaced();
