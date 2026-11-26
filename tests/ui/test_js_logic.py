@@ -237,7 +237,7 @@ def test_viewport_math(js: Page) -> None:
 
 def test_side_panes_state(js: Page) -> None:
     """D-408: the hidden sides per view, read from what was kept, turned over one at a
-    time; the edge tab's words; the keys."""
+    time; what the edge tab and the column's top button say; the keys."""
     result = run(
         js,
         """
@@ -250,7 +250,7 @@ def test_side_panes_state(js: Page) -> None:
         const shown = p.withSide(one, "schematic", "right", false);
         return {
           none, garbled, one, back, shown,
-          titles: [p.tabTitle("schematic", "left", false), p.tabTitle("board", "right", false), p.tabTitle("board", "right", true), p.tabTitle("schematic", "right", true)],
+          titles: [p.sideTitle("Show", "schematic", "left", false), p.sideTitle("Show", "board", "right", false), p.sideTitle("Show", "board", "right", true), p.sideTitle("Show", "schematic", "right", true), p.sideTitle("Hide", "board", "left", false), p.sideTitle("Pin", "schematic", "left", false)],
           keys: [k.actionFor({ key: "[" }), k.actionFor({ key: "]" }), k.actionFor({ key: "[", alt: true }), k.actionFor({ key: "[", ctrl: true })],
         };
         """,
@@ -266,6 +266,8 @@ def test_side_panes_state(js: Page) -> None:
         "Show the board's panes (])",
         "Show the review (])",
         "Show the results (])",
+        "Hide the tray ([)",
+        "Pin the parts ([)",
     ]
     # [ and ] even typed with Alt (Option+8 on a Portuguese Mac); not with Ctrl
     assert result["keys"] == [

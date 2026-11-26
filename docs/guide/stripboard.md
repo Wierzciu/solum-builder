@@ -16,7 +16,7 @@ The Board view swaps the screen around:
 - **The board** in the middle, at real proportions, seen from the parts side. The line under it gives its size, cuts, links and wires: *20 × 16 holes (51 × 41 mm), 20 cuts, 11 links, 14 wires*.
 - **The board's panes** on the right, in the result panes' place: **Warnings**, **Notes**, **Schematic** (a small copy; selecting a part lights it on both drawings; **Expand** shows it large over the board), **Nets** and **Settings**. They move and fold as the result panes do, and keep their own order. Back in the schematic the result panes return as they were.
 
-**[** and **]** hide the tray and the board's panes here as they hide the palette and the result panes in the schematic, and the tab on the canvas's edge brings each back. The Board view keeps its own: hide the tray here and the palette stays in the schematic.
+The tray and the board's panes hide here as the palette and the result panes do in the schematic (the window icons at the top bar's right end, **[** and **]**), and the tab on the canvas's edge brings each back, or resting on the canvas's very edge peeks one out. The Board view keeps its own: hide the tray here and the palette stays in the schematic.
 
 Undo, Redo and History follow the view: the board has its own steps, so undoing on the board never undoes a schematic change. Save keeps both.
 

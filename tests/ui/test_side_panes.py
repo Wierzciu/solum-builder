@@ -1,8 +1,10 @@
 """P7b (D-408): side panes that hide, in the Schematic and the Board view. Either side
-hides and comes back (its key, View's items, the tab on the canvas's edge), the drawing
-staying where it was on screen; remembered after a reload, per view; an expanded pane
-stays out when its column hides, and its Collapse shows the column; a review opening shows
-the board's hidden right column, which can be hidden again."""
+hides and comes back (its key, View's items, its toggle in the header, "on" while hidden;
+the tab on the canvas's edge; resting on the canvas's edge peeks it out over the drawing,
+and its toggle pins it), the drawing staying where it was on screen; remembered after a
+reload, per view; an expanded pane stays out when its column hides, and its Collapse shows
+the column; a review opening shows the board's hidden right column, which can be hidden
+again."""
 
 import re
 
@@ -135,3 +137,67 @@ def test_a_review_shows_the_hidden_right_column_once(page: Page, base_url: str) 
     tab.click()
     expect(column).not_to_have_class(HIDDEN)
     expect(review).to_be_visible()
+
+
+def canvas_edge(page: Page, side: str) -> tuple[float, float]:
+    """A point on the canvas's very edge, a quarter down (clear of the edge tab)."""
+    box = page.locator("section.canvas").bounding_box()
+    assert box
+    x = box["x"] + 2 if side == "left" else box["x"] + box["width"] - 3
+    return x, box["y"] + box["height"] / 4
+
+
+def test_the_header_toggle_hides_and_the_edge_peeks(page: Page, base_url: str) -> None:
+    open_circuit(page, base_url, "ts808")
+    results = page.locator("aside.panels")
+    toggle = page.locator("#side-toggle-right")
+    # open is the default: nothing lit
+    expect(toggle).to_have_attribute("aria-pressed", "false")
+    expect(toggle).to_have_attribute("title", "Hide the results (])")
+    expect(page.locator("#side-toggle-left")).to_have_attribute("title", "Hide the parts ([)")
+    where = to_screen(page, *part_pos(page, "Q1"))
+    width = canvas_width(page)
+    toggle.click()
+    expect(results).to_have_class(HIDDEN)
+    expect(results).not_to_be_in_viewport()
+    expect(toggle).to_have_attribute("aria-pressed", "true")  # on: hidden
+    expect(toggle).to_have_attribute("title", "Show the results (])")
+    wide = canvas_width(page)
+    assert wide == pytest.approx(width + 440, abs=1)
+
+    # resting on the canvas's edge slides it out over the drawing, which doesn't move
+    page.mouse.move(*canvas_edge(page, "right"))
+    expect(results).to_have_class(re.compile(r"\bside-peek\b"))
+    expect(results).to_be_in_viewport()
+    assert canvas_width(page) == pytest.approx(wide, abs=1)
+    assert to_screen(page, *part_pos(page, "Q1")) == pytest.approx(where, abs=0.5)
+    expect(toggle).to_have_attribute("title", "Pin the results (])")
+    # leaving it slides it back
+    page.mouse.move(400, 400)
+    expect(results).not_to_have_class(re.compile(r"\bside-peek\b"))
+    expect(results).not_to_be_in_viewport()
+
+    # peeked again and pinned by its toggle: back in its column, the drawing still
+    page.mouse.move(*canvas_edge(page, "right"))
+    expect(results).to_have_class(re.compile(r"\bside-peek\b"))
+    toggle.click()
+    expect(results).not_to_have_class(HIDDEN)
+    expect(results).not_to_have_class(re.compile(r"\bside-peek\b"))
+    assert canvas_width(page) == pytest.approx(width, abs=1)
+    assert to_screen(page, *part_pos(page, "Q1")) == pytest.approx(where, abs=0.5)
+    expect(toggle).to_have_attribute("aria-pressed", "false")
+
+
+def test_a_drag_reaching_the_edge_does_not_peek(page: Page, base_url: str) -> None:
+    open_circuit(page, base_url, "ts808")
+    page.keyboard.press("[")
+    palette = page.locator("#palette")
+    expect(palette).to_have_class(HIDDEN)
+    box = page.locator("section.canvas").bounding_box()
+    assert box
+    page.mouse.move(box["x"] + 300, box["y"] + 60)
+    page.mouse.down()
+    page.mouse.move(*canvas_edge(page, "left"), steps=5)
+    page.wait_for_timeout(500)  # longer than the edge's rest before a peek
+    expect(palette).not_to_have_class(re.compile(r"\bside-peek\b"))
+    page.mouse.up()
