@@ -156,7 +156,8 @@ kbd {
 
 /* Palette (left): tiles with the part's symbol, dragged onto the canvas */
 .palette {
-  width: 184px;
+  --side-w: 184px;
+  width: var(--side-w);
   flex: none;
   overflow-y: auto;
   background: var(--surface-1);
@@ -262,8 +263,19 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 
 
 /* Workspace: canvas gets the space, panels on the right */
-.workspace { flex: 1; display: flex; min-height: 0; }
+.workspace { flex: 1; display: flex; min-height: 0; overflow: hidden; } /* a hidden side slides out past its edge (D-408) */
 .canvas { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* side panes that hide (D-408): out past the workspace's edge, as laid out (its scroll and
+   wrapping kept), not focusable; a pane expanded as a large view stays on screen */
+.palette.side-hidden, .board-tray.side-hidden { margin-left: calc(-1 * var(--side-w)); visibility: hidden; }
+.panels.side-hidden, .board-panels.side-hidden { margin-right: calc(-1 * var(--side-w)); visibility: hidden; }
+.side-hidden > .large-view { visibility: visible; }
+/* the tab on the canvas's edge where a hidden side was: a click brings it back */
+.side-tab { position: absolute; top: 50%; z-index: 6; transform: translateY(-50%); width: 16px; height: 56px; padding: 0; background: var(--surface-1); border: 1px solid var(--border); color: var(--text-2); font-size: 14px; line-height: 1; }
+.side-tab.left { left: 0; border-left: 0; border-radius: 0 4px 4px 0; }
+.side-tab.right { right: 0; border-right: 0; border-radius: 4px 0 0 4px; }
+.side-tab:hover { border-color: var(--accent); color: var(--accent-hi); }
+.side-tab[hidden] { display: none; }
 .circuit-name {
   margin: 0;
   white-space: nowrap;
@@ -323,7 +335,7 @@ body.dragging-part, body.dragging-part * { cursor: grabbing !important; }
 .board-needs .reach-joined .state { color: var(--ok); }
 body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-show="board"] .panels { display: none; }
 /* the Tray: the palette's place in the Board view (D-371) */
-.board-tray { width: 232px; flex: none; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--border); padding: 6px 10px 16px; font-size: 13px; }
+.board-tray { --side-w: 232px; width: var(--side-w); flex: none; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--border); padding: 6px 10px 16px; font-size: 13px; }
 .board-tray[hidden] { display: none; }
 .board-edit { display: flex; gap: 6px; margin: 6px 0 4px; } /* Cuts and Links (D-406) */
 .board-edit[hidden] { display: none; }
@@ -660,7 +672,8 @@ body[data-show="board"] .palette, body[data-show="board"] #schematic, body[data-
 
 /* Panels */
 .panels, .board-panels {
-  width: 440px;
+  --side-w: 440px;
+  width: var(--side-w);
   flex: none;
   overflow-y: auto;
   overscroll-behavior: contain; /* the column stops a scroll, not the page (D-343) */

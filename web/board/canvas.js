@@ -9,7 +9,7 @@
  * the board and footprints from the view.
  */
 
-import { fitView, panBy, viewBoxText, zoomAt, resizeView } from "../schematic/viewport.js";
+import { fitView, holdView, panBy, viewBoxText, zoomAt, resizeView } from "../schematic/viewport.js";
 import { STEP, columnName, holeName, holeXY, itemRefs, itemShape, labelAt, legLabel, partShapes, pointAlong, routePath, runRects, shownHoles, valueOf, wireHops, wireObstacles, wireRoutes } from "./board-logic.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -570,6 +570,19 @@ export function boardCanvas(svg, app) {
     /** @param {number} factor */
     zoomBy(factor) {
       vb = zoomAt(vb, vb.x + vb.w / 2, vb.y + vb.h / 2, factor);
+      apply();
+    },
+    /**
+     * Run `change` (a side pane hidden or shown) with the drawing kept where it is on
+     * screen (`holdView`, D-408), not re-centred as a window resize keeps it.
+     * @param {() => void} change
+     */
+    keepPlace(change) {
+      const from = svg.getBoundingClientRect();
+      change();
+      const to = svg.getBoundingClientRect();
+      if (!shown || !from.width || !to.width) return;
+      vb = holdView(vb, from, to);
       apply();
     },
   };

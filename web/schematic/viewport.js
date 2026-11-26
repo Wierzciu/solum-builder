@@ -93,5 +93,24 @@ export function resizeView(vb, from, to) {
   return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
 
+/**
+ * The view after its element is resized from `from` to `to` (each its place and size on
+ * screen, in pixels) with the drawing kept where it was on screen: the same zoom, and each
+ * point under the same pixel, the view box growing or shrinking at the edges that moved
+ * (a side pane hidden or shown, D-408).
+ * @param {ViewBox} vb @param {{left: number, top: number, width: number, height: number}} from
+ * @param {{left: number, top: number, width: number, height: number}} to
+ * @returns {ViewBox}
+ */
+export function holdView(vb, from, to) {
+  const unitsPerPx = vb.w / from.width;
+  return {
+    x: vb.x + (to.left - from.left) * unitsPerPx,
+    y: vb.y + (to.top - from.top) * unitsPerPx,
+    w: to.width * unitsPerPx,
+    h: to.height * unitsPerPx,
+  };
+}
+
 /** @param {ViewBox} vb */
 export const viewBoxText = (vb) => `${vb.x} ${vb.y} ${vb.w} ${vb.h}`;

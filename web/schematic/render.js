@@ -32,7 +32,7 @@ import { GRID, pointOnWire, route, snap, snapPoint, wireEnds } from "../editor/e
 import { crossings } from "../editor/router.js";
 import { problemMarks } from "../problems.js";
 import { labelText, placeText, plugPoint, rotateOffset, supplySymbol, supplyText, symbol, TEXT_LINE, TEXT_SIZE, textBox, textLines, typeLine, typeSet, valueLine } from "./symbols.js";
-import { boundsOf, fitView, panBy, resizeView, revealPoint, viewBoxText, zoomAt } from "./viewport.js";
+import { boundsOf, fitView, holdView, panBy, resizeView, revealPoint, viewBoxText, zoomAt } from "./viewport.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD = 4; // pixels before a press becomes a drag
@@ -370,6 +370,20 @@ export class Schematic {
   resized() {
     const now = this.size();
     if (this.shown && (now.width !== this.shown.width || now.height !== this.shown.height)) this.vb = resizeView(this.vb, this.shown, now);
+    this.apply();
+  }
+
+  /**
+   * Run `change` (a side pane hidden or shown) with the drawing kept where it is on
+   * screen (`holdView`, D-408), not re-centred as `resized` does for the window.
+   * @param {() => void} change
+   */
+  keepPlace(change) {
+    const from = this.svg.getBoundingClientRect();
+    change();
+    const to = this.svg.getBoundingClientRect();
+    if (!this.shown || !from.width || !to.width) return;
+    this.vb = holdView(this.vb, from, to);
     this.apply();
   }
 

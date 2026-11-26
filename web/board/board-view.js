@@ -70,13 +70,15 @@ import { BOARD_SETTINGS, EDGE, overlapKey, overlapMarks, overlapParts, boardRefO
  *   editPart: (ref: string, patch: Record<string, unknown>, stripboard: any, label: string) => void,
  *   refuse: (message: string) => void,
  *   marks: () => boolean,
+ *   reviewing?: (open: boolean) => void,
  * }} BoardApp
  *   `resting`: what's selected when the empty canvas is clicked (the root's own choice);
  *   `shown`: told when the view changes, so the root sets its hint (`hint`) and buttons;
  *   `editBoard`: the circuit with this board (its plain form; null: none, Settings' *Remove
  *   board*, D-370), one undo step; `editPart`: a part's properties changed and this board
  *   with it (a trimmer's style, D-393), one undo step; `marks`: View → Problem marks is on
- *   (the board's overlaps marked too, D-398)
+ *   (the board's overlaps marked too, D-398); `reviewing`: a full layout's review has
+ *   opened (true) or closed (false), so a hidden right column can be shown (D-408)
  */
 
 const BUTTON_TITLE = "Lay out a stripboard for this circuit";
@@ -262,6 +264,7 @@ export function boardView(host, app) {
     },
     keep: (stripboard) => app.editBoard(stripboard, "Build a full layout"),
     refuse: (message) => app.refuse(message),
+    reviewing: (open) => app.reviewing?.(open),
   }, column);
   trimButton.addEventListener("click", () => void resize("trim", "Trim the board"));
   wireButton.addEventListener("click", () => void wireForMe());
@@ -1330,6 +1333,8 @@ export function boardView(host, app) {
     },
     zoomBy: (/** @type {number} */ factor) => canvas.zoomBy(factor),
     fit: () => canvas.fit(),
+    /** Run `change` (a side pane hidden or shown) with the board kept where it is on screen (D-408). @param {() => void} change */
+    keepPlace: (/** @type {() => void} */ change) => canvas.keepPlace(() => beforeCanvas.keepPlace(change)), // the review's Before too
     /** View → Reset pane order, for the board's panes too. */
     resetPanes: () => panes?.reset(),
     /** Drawn again as it is (View → Problem marks turned on or off, D-398). */
