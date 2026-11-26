@@ -10,6 +10,8 @@ obwodem do uruchomienia w symulatorze.
 
 ![Lekcja: prawo Ohma](docs/lekcje/img/lekcje.png)
 
+![Symulator z polskim interfejsem](docs/lekcje/img/symulator.png)
+
 ## Co nowego względem oryginału
 
 - **Kurs `Lekcje`** pod adresem `/lekcje/` — 12 lekcji, 12 gotowych obwodów, quizy,
